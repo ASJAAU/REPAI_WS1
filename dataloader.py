@@ -13,10 +13,13 @@ class HarborfrontClassificationDataset():
             3: "vehicle"
         }
 
-    def __init__(self, data, root, classes=CLASS_LIST.values(), binary_cls=True) -> None:
+    def __init__(self, data_split, root, classes=CLASS_LIST.values(), binary_cls=True, verbose=False) -> None:
+        if verbose:
+            print(f'Loading "{data_split}"')
+            print(f'Target Classes {classes}')
         #Load dataset file
         self.root = root
-        data = pd.read_csv(data, sep=";")
+        data = pd.read_csv(data_split, sep=";")
 
         #Isolate desired classes
         for c in classes:
@@ -37,6 +40,10 @@ class HarborfrontClassificationDataset():
             self.dataset["target"] = self.dataset.apply(lambda x: tuple([1 if int(x[g]) > 0 else 0 for g in self.classes]), axis=1)
         else:
             self.dataset["target"] = self.dataset.apply(lambda x: tuple([int(x[g]) for g in self.classes]), axis=1)
+
+        if verbose:
+            print(f'Successfully loaded "{data_split}" as {self.__repr__()}')
+            #print(self)
 
     def get_data_generator(self, batchsize=8):
         #Data Augmentations
@@ -63,14 +70,9 @@ class HarborfrontClassificationDataset():
         return f'Harborfront Dataset Object'
 
     def __str__(self):
-        output = io.StringIO()
-        print(self.dataset)
-        contents = output.getvalue()
-        output.close()
-        return contents
+        return self.dataset.__str__()
 
 if __name__ == "__main__":
-    import io
     import numpy as np
     dataset = HarborfrontClassificationDataset("../Test_data.csv", "/Data/Harborfront_raw/")
     print(dataset)
