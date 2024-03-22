@@ -11,6 +11,7 @@ model:
   - "bicycle"
   - "motorcycle"
   - "vehicle"
+  expose_featuremap: False
 
 data:
   root: "/Data/Harborfront_raw/"
