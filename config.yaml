@@ -1,10 +1,11 @@
 training:
   epochs: 20
   lr: 0.005
+  lr_steps: 1000
   batch_size: 32
+  validation_steps: 10000
 
 model:
-  version: 1
   size: 101
   classes:
   - "human"
@@ -18,4 +19,9 @@ data:
   train: "../Train_data.csv"
   valid: "../Valid_data.csv"
   test: "../Test_data.csv"
+  im_size: 
+  - 288
+  - 384
+  - 3
+  binary_cls: True
   
