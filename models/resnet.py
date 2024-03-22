@@ -46,13 +46,11 @@ ALLOWED_TYPES = (DEFAULT_DTYPE,) + CASTABLE_TYPES
 ################################################################################
 def batch_norm(inputs, training, data_format):
   """Performs a batch normalization using a standard set of parameters."""
-  # We set fused=True for a significant performance boost. See
-  # https://www.tensorflow.org/performance/performance_guide#common_fused_ops
-  return tf.layers.batch_normalization(
-      inputs=inputs, axis=1 if data_format == 'channels_first' else 3,
+  return tf.keras.layers.BatchNormalization(
+      #inputs=inputs,
+      axis=1 if data_format == 'channels_first' else 3,
       momentum=_BATCH_NORM_DECAY, epsilon=_BATCH_NORM_EPSILON, center=True,
-      scale=True, training=training, fused=True)
-
+      scale=True)(inputs)
 
 def fixed_padding(inputs, kernel_size, data_format):
   """Pads the input along the spatial dimensions independently of input size.
@@ -80,19 +78,19 @@ def fixed_padding(inputs, kernel_size, data_format):
                                     [pad_beg, pad_end], [0, 0]])
   return padded_inputs
 
-
 def conv2d_fixed_padding(inputs, filters, kernel_size, strides, data_format):
   """Strided 2-D convolution with explicit padding."""
   # The padding is consistent and is based only on `kernel_size`, not on the
-  # dimensions of `inputs` (as opposed to using `tf.layers.conv2d` alone).
+  # dimensions of `inputs` (as opposed to using `tf.layers.Conv2D` alone).
   if strides > 1:
     inputs = fixed_padding(inputs, kernel_size, data_format)
 
-  return tf.layers.conv2d(
-      inputs=inputs, filters=filters, kernel_size=kernel_size, strides=strides,
-      padding=('SAME' if strides == 1 else 'VALID'), use_bias=False,
-      kernel_initializer=tf.variance_scaling_initializer(),
-      data_format=data_format)
+  return tf.keras.layers.Conv2D(
+      #inputs=inputs, 
+      filters=filters, kernel_size=kernel_size, strides=strides,
+      padding=('same' if strides == 1 else 'valid'), use_bias=False,
+      kernel_initializer=tf.keras.initializers.variance_scaling(),
+      data_format=data_format)(inputs)
 
 
 ################################################################################
@@ -384,7 +382,6 @@ def get_block_sizes(resnet_size):
     raise ValueError(err)
 
 
-
 class Model(object):
   """Base class for building the Resnet Model."""
 
@@ -513,19 +510,21 @@ class Model(object):
       A variable scope for the model.
     """
 
-    return tf.variable_scope('resnet_model',
-                             custom_getter=self._custom_dtype_getter)
+    return tf.compat.v1.variable_scope('resnet_model', custom_getter=self._custom_dtype_getter)
 
-  def __call__(self, inputs, training):
+  def __call__(self, inputs, training, expose_featuremap=False):
     """Add operations to classify a batch of input images.
 
     Args:
       inputs: A Tensor representing a batch of input images.
       training: A boolean. Set to True to add operations required only when
         training the classifier.
+      expose_featuremap: A boolean. Set to true to pass a copy of the featuremaps together with predicted logits
 
     Returns:
       A logits Tensor with shape [<batch_size>, self.num_classes].
+      or
+     Two Tensors with shape [<batch_size>, self.num_classes], [<batch_size>, C, H, W] (logits and featuremap respectively).
     """
 
     with self._model_variable_scope():
@@ -538,6 +537,7 @@ class Model(object):
       inputs = conv2d_fixed_padding(
           inputs=inputs, filters=self.num_filters, kernel_size=self.kernel_size,
           strides=self.conv_stride, data_format=self.data_format)
+      
       inputs = tf.identity(inputs, 'initial_conv')
 
       # We do not include batch normalization or activation functions in V2
@@ -549,10 +549,11 @@ class Model(object):
         inputs = tf.nn.relu(inputs)
 
       if self.first_pool_size:
-        inputs = tf.layers.max_pooling2d(
-            inputs=inputs, pool_size=self.first_pool_size,
-            strides=self.first_pool_stride, padding='SAME',
-            data_format=self.data_format)
+        inputs = tf.keras.layers.MaxPooling2D(
+            #inputs=inputs, 
+            pool_size=self.first_pool_size,
+            strides=self.first_pool_stride, padding='same',
+            data_format=self.data_format)(inputs)
         inputs = tf.identity(inputs, 'initial_max_pool')
 
       for i, num_blocks in enumerate(self.block_sizes):
@@ -569,6 +570,9 @@ class Model(object):
         inputs = batch_norm(inputs, training, self.data_format)
         inputs = tf.nn.relu(inputs)
 
+      if expose_featuremap:
+        features = tf.identity(inputs, 'latent_featuremap')
+
       # The current top layer has shape
       # `batch_size x pool_size x pool_size x final_size`.
       # ResNet does an Average Pooling layer over pool_size,
@@ -579,6 +583,10 @@ class Model(object):
       inputs = tf.identity(inputs, 'final_reduce_mean')
 
       inputs = tf.squeeze(inputs, axes)
-      inputs = tf.layers.dense(inputs=inputs, units=self.num_classes)
+      inputs = tf.keras.layers.Dense(units=self.num_classes)(inputs)
       inputs = tf.identity(inputs, 'final_dense')
-      return inputs
+      
+      if expose_featuremap:
+        return inputs, features
+      else:
+        return inputs
