@@ -37,9 +37,9 @@ class HarborfrontClassificationDataset():
 
         #convert to binary (object/noobject)?
         if binary_cls:
-            self.dataset["target"] = self.dataset.apply(lambda x: tuple([1 if int(x[g]) > 0 else 0 for g in self.classes]), axis=1)
+            self.dataset["target"] = self.dataset.apply(lambda x: tf.constant([1 if int(x[g]) > 0 else 0 for g in self.classes]), axis=1)
         else:
-            self.dataset["target"] = self.dataset.apply(lambda x: tuple([int(x[g]) for g in self.classes]), axis=1)
+            self.dataset["target"] = self.dataset.apply(lambda x: tf.constant([int(x[g]) for g in self.classes]), axis=1)
 
         if verbose:
             print(f'Successfully loaded "{data_split}" as {self.__repr__()}')
@@ -48,6 +48,9 @@ class HarborfrontClassificationDataset():
     def get_data_generator(self, batchsize=8):
         #Data Augmentations
         img_preprocessing = ImageDataGenerator(
+            rescale=1./255, #"Map to range [0-1]"
+            featurewise_std_normalization=True,
+            brightness_range=(0.75,1.25),
             horizontal_flip = True,
         )
 
@@ -60,6 +63,7 @@ class HarborfrontClassificationDataset():
             class_mode= "raw",
             target_size= (288,384),
             batch_size = batchsize,
+            dtype=(tf.Tensor, tf.Tensor)
         )
         return data_generator
     
@@ -80,8 +84,13 @@ if __name__ == "__main__":
     input("Press Enter to continue...")
     for i, (imgs,targets) in enumerate(dataset.get_data_generator(batchsize=8)):
         print(f'------ Batch: {i} ------')
-        print(f'tensor: {imgs.shape}')
-        print(f'labels: {targets.shape}')
+        print(f'tensor: {imgs.shape}', f'type: {type(imgs)}')
+        print(f'labels: {targets.shape}', f'type: {type(targets)}')
+        input("Press Enter for images")
+        print("--images--")
+        for im in imgs:
+            print(im)
+        input("Press Enter for labels")
+        print("--Labels--")
         for label in targets:
             print(label)
-        input("Press Enter for next batch")
