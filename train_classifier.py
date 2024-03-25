@@ -56,7 +56,7 @@ if __name__ == "__main__":
 
         #Where to save model
         network_callbacks = callbacks(
-            save_path='./assets/weights/exp2',
+            save_path=f'./{cfg["model"]["name"]}/weights/{cfg["model"]["exp"]}',
             depth=cfg["model"]["size"]
         )
 
@@ -66,7 +66,7 @@ if __name__ == "__main__":
         print(dummy_pred)
         
         network.summary()
-        network.save("./dummy_model.keras")
+        network.save("./ResNet56_1cls-pred_only.keras")
 
         #Load datasets
         print("\n########## LOADING DATA ##########")
