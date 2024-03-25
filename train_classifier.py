@@ -1,16 +1,17 @@
 #from models.resnet import Model, get_block_sizes
-from REPAI_WS1.models.resnet import *
+from models.resnet import *
 from dataloader import HarborfrontClassificationDataset
 import tensorflow as tf
 from tensorflow.keras.optimizers import Adam
 from utils.callbacks import callbacks
 from utils.misc_utils import *
+import numpy as np
 import yaml
 import argparse
 
 #Some wierd tensorflow bug is angry at docker containers:
-import os
-os.environ["TF_CPP_MIN_VLOG_LEVEL"] = "3"
+# import os
+# os.environ["TF_CPP_MIN_VLOG_LEVEL"] = "3"
 
 
 if __name__ == "__main__":
@@ -49,7 +50,8 @@ if __name__ == "__main__":
             input_shape=tuple(cfg["data"]["im_size"]),
             depth = cfg["model"]["size"],
             num_classes=len(cfg["model"]["classes"]),
-            expose_features=cfg["model"]["expose_featuremap"]
+            expose_features=cfg["model"]["expose_featuremap"],
+            name=cfg["model"]["name"]
         )
 
         #Where to save model
@@ -57,11 +59,19 @@ if __name__ == "__main__":
             save_path='./assets/weights/exp2',
             depth=cfg["model"]["size"]
         )
+
+        #Dummy input
+        dummy_pred = network(tf.convert_to_tensor(np.random.rand(cfg["training"]["batch_size"],288,384,3)))
+        print("## Dummy data and ouput##")
+        print(dummy_pred)
         
+        network.summary()
+        network.save("./dummy_model.keras")
+
         #Load datasets
         print("\n########## LOADING DATA ##########")
         train_dataset = HarborfrontClassificationDataset(
-            data_split=cfg["data"]["train"],
+            data_split=cfg["data"]["test"],
             root=cfg["data"]["root"],
             classes=cfg["model"]["classes"],
             verbose=True, #Print status and overview
@@ -69,14 +79,21 @@ if __name__ == "__main__":
             )
 
         valid_dataset = HarborfrontClassificationDataset(
-            data_split=cfg["data"]["valid"],
+            data_split=cfg["data"]["test"],
             root=cfg["data"]["root"],
             classes=cfg["model"]["classes"],
             verbose=True, #Print status and overview
             binary_cls=cfg["data"]["binary_cls"],
             )
 
-        #Create dataloader
+        #Create dataloader (AS GENERATOR)
+        # print("\nCreating training dataloader:")
+        # train_dataloader = train_dataset.get_data_generator()
+        # print("\nCreating validation dataloader:")
+        # valid_dataloader = valid_dataset.get_data_generator()
+        # print("")
+
+        #Create dataloader (as TensorFlow.Data.Dataset)
         print("\nCreating training dataloader:")
         train_dataloader = train_dataset.get_data_generator()
         print("\nCreating validation dataloader:")
@@ -95,9 +112,9 @@ if __name__ == "__main__":
             metrics='accuracy',
         )
 
-        #Fit to data
+        #Complete Training Function
         rep = network.fit(
-            x=train_dataloader,
+            train_dataloader,
             epochs=cfg["training"]["epochs"],
             steps_per_epoch=int(len(train_dataloader)/cfg["training"]["batch_size"]),
             callbacks=network_callbacks,
@@ -105,14 +122,15 @@ if __name__ == "__main__":
             validation_steps=int(len(valid_dataloader)/cfg["training"]["batch_size"]),
         )
 
-        # #Train Loop
+        # #Batchwise training loop
         # for epoch in range(cfg["training"]["epochs"]):
-        #     #Batchwise training
+        #     #Training
         #     for batch in train_dataloader:
         #         #Seperate input and targets
         #         imgs, targets = batch
-        #         print(type(imgs), type(targets))
         #         #Train on batch
+        #         imgs = tf.convert_to_tensor(np.asarray(imgs).astype('float32'))
+        #         print(type(imgs), type(targets))
         #         metrics = network.train_on_batch(imgs, targets, return_dict=True)
         #     #Validation
         #     val_metrics = network.evaluate(
@@ -121,6 +139,3 @@ if __name__ == "__main__":
         #         verbose="auto",
         #         return_dict=True,
         #     )
-            
-        
-

@@ -6,13 +6,14 @@ training:
   validation_steps: 10000
 
 model:
-  size: 101
+  size: 56
   classes:
   - "human"
   - "bicycle"
   - "motorcycle"
   - "vehicle"
-  expose_featuremap: False
+  expose_featuremap: True
+  name: "ResNet56_4_class"
 
 data:
   root: "/Data/Harborfront_raw/"
