@@ -56,7 +56,7 @@ if __name__ == "__main__":
 
         #Where to save model
         network_callbacks = callbacks(
-            save_path=f'./{cfg["model"]["name"]}/weights/{cfg["model"]["exp"]}',
+            save_path=f'./experiments/{cfg["model"]["name"]}/weights/{cfg["model"]["exp"]}',
             depth=cfg["model"]["size"]
         )
 
