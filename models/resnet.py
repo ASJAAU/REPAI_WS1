@@ -145,8 +145,10 @@ def build_resnet_model(input_shape: Tuple[int, int, int],
     y = Dropout(0.5)(y)
 
     if expose_features:
-        outputs = (Dense(num_classes, activation='sigmoid')(y), X)
+        #outputs = [Dense(1, activation='sigmoid', name=f'cls_{x}')(y) for x in range(num_classes)], X
+        outputs = Dense(num_classes, activation='sigmoid')(y), X
     else:
+        #outputs = [Dense(1, activation='sigmoid', name=f'cls_{x}')(y) for x in range(num_classes)]
         outputs = Dense(num_classes, activation='sigmoid')(y)
 
     # Instantiate model.

@@ -96,8 +96,10 @@ if __name__ == "__main__":
         #Create dataloader (as TensorFlow.Data.Dataset)
         print("\nCreating training dataloader:")
         train_dataloader = train_dataset.get_data_generator()
+        #train_dataloader = train_dataset.get_tf_dataloader()
         print("\nCreating validation dataloader:")
         valid_dataloader = valid_dataset.get_data_generator()
+        #valid_dataloader = valid_dataset.get_tf_dataloader()
         print("")
 
         #Login WANDB
