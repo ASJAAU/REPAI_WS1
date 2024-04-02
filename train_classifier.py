@@ -71,7 +71,7 @@ if __name__ == "__main__":
         #Load datasets
         print("\n########## LOADING DATA ##########")
         train_dataset = HarborfrontClassificationDataset(
-            data_split=cfg["data"]["test"],
+            data_split=cfg["data"]["train"],
             root=cfg["data"]["root"],
             classes=cfg["model"]["classes"],
             verbose=True, #Print status and overview
@@ -79,7 +79,7 @@ if __name__ == "__main__":
             )
 
         valid_dataset = HarborfrontClassificationDataset(
-            data_split=cfg["data"]["test"],
+            data_split=cfg["data"]["valid"],
             root=cfg["data"]["root"],
             classes=cfg["model"]["classes"],
             verbose=True, #Print status and overview
