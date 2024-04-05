@@ -32,20 +32,19 @@ def callbacks(save_path: str, depth: int, cfg: dict) -> List:
     existsfolder(save_path)
 
     model_checkpoint = ModelCheckpoint(
-        filepath=f"{save_path}/" + f"ResNet{depth}" + "-epoch:{epoch:02d}-val_acc:{val_accuracy:.2f}.hdf5",
+        filepath=f"{save_path}/" "weights/" + "epoch:{epoch:02d}-val_acc:{val_accuracy:.2f}.hdf5",
         save_best_only=True,
         save_weights_only=False,
         verbose=1)
 
     existsfolder(f'./{save_path}/logs')
 
-    csv_logger = CSVLogger(filename=f"./{save_path}/logs/logs-{now}.csv",
-                           append=True)
+    csv_logger = CSVLogger(filename=f"./{save_path}/logs-{now}.csv",append=True)
 
 
     terminate_on_nan = TerminateOnNaN()
 
-    with open(f'./{save_path}/cfg.yaml') as f:
+    with open(f'./{save_path}/cfg.yaml', 'w') as f:
         yaml.dump(cfg, f)
 
     callbacks_list = [csv_logger, model_checkpoint, terminate_on_nan]

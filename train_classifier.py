@@ -2,17 +2,11 @@
 from models.resnet import *
 from dataloader import HarborfrontClassificationDataset
 import tensorflow as tf
-from tensorflow.keras.optimizers import Adam
 from utils.callbacks import callbacks
 from utils.misc_utils import *
 import numpy as np
 import yaml
 import argparse
-
-#Some wierd tensorflow bug is angry at docker containers:
-# import os
-# os.environ["TF_CPP_MIN_VLOG_LEVEL"] = "3"
-
 
 if __name__ == "__main__":
     #CLI
@@ -26,11 +20,11 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     print("\n########## CLASSIFY-EXPLAIN-REMOVE ##########")
-
     #Load configs
     with open (args.config, 'r') as f:
         cfg = yaml.safe_load(f)
 
+    #This is only needed when limiting TF to one GPU
     gpus = tf.config.list_physical_devices('GPU')
     if gpus:
         # Restrict TensorFlow to only use the first GPU
@@ -56,8 +50,9 @@ if __name__ == "__main__":
 
         #Where to save model
         network_callbacks = callbacks(
-            save_path=f'./experiments/{cfg["model"]["name"]}/weights/{cfg["model"]["exp"]}',
-            depth=cfg["model"]["size"]
+            save_path=f'assets/{cfg["model"]["name"]}/',
+            depth=cfg["model"]["size"],
+            cfg=cfg
         )
 
         #Dummy input
@@ -87,30 +82,32 @@ if __name__ == "__main__":
             )
 
         #Create dataloader (AS GENERATOR)
-        # print("\nCreating training dataloader:")
-        # train_dataloader = train_dataset.get_data_generator()
-        # print("\nCreating validation dataloader:")
-        # valid_dataloader = valid_dataset.get_data_generator()
-        # print("")
-
-        #Create dataloader (as TensorFlow.Data.Dataset)
         print("\nCreating training dataloader:")
         train_dataloader = train_dataset.get_data_generator()
-        #train_dataloader = train_dataset.get_tf_dataloader()
         print("\nCreating validation dataloader:")
         valid_dataloader = valid_dataset.get_data_generator()
-        #valid_dataloader = valid_dataset.get_tf_dataloader()
         print("")
 
         #Login WANDB
         if args.wandb:
             raise NotImplemented
 
-        #Train loop
+        #Define loss
+        loss = tf.keras.losses.Crossentropy(from_logits=False)
+
+        #Define learning-rate schedule
+        lr_schedule = tf.keras.optimizers.schedules.ExponentialDecay(
+            initial_learning_rate=cfg["training"]["lr"],
+            decay_steps=cfg["training"]["lr_steps"],
+            decay_rate=0.9)
+        
+        #Define optimizer
+        optimizer= tf.keras.optimizers.SGD(learning_rate=lr_schedule)
+
         #Compile model
         network.compile(
-            loss=tf.keras.losses.CategoricalCrossentropy(from_logits=False),
-            optimizer=Adam(amsgrad=True, learning_rate=cfg["training"]["lr"]),
+            loss=loss,
+            optimizer=optimizer,
             metrics='accuracy',
         )
 
@@ -123,21 +120,3 @@ if __name__ == "__main__":
             validation_data=valid_dataloader,
             validation_steps=int(len(valid_dataloader)/cfg["training"]["batch_size"]),
         )
-
-        # #Batchwise training loop
-        # for epoch in range(cfg["training"]["epochs"]):
-        #     #Training
-        #     for batch in train_dataloader:
-        #         #Seperate input and targets
-        #         imgs, targets = batch
-        #         #Train on batch
-        #         imgs = tf.convert_to_tensor(np.asarray(imgs).astype('float32'))
-        #         print(type(imgs), type(targets))
-        #         metrics = network.train_on_batch(imgs, targets, return_dict=True)
-        #     #Validation
-        #     val_metrics = network.evaluate(
-        #         x=valid_dataloader,
-        #         batch_size=cfg["training"]["batch_size"],
-        #         verbose="auto",
-        #         return_dict=True,
-        #     )
