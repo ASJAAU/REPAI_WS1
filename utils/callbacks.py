@@ -1,7 +1,6 @@
 import math
 from typing import *
-from tensorflow.keras.callbacks import ModelCheckpoint, TerminateOnNaN, LearningRateScheduler, \
-    CSVLogger, ReduceLROnPlateau, EarlyStopping
+from tensorflow.keras.callbacks import ModelCheckpoint, TerminateOnNaN, CSVLogger
 from datetime import datetime
 import os
 import yaml
@@ -12,7 +11,6 @@ now = datetime.now().strftime("%d-%m-%Y:%H")
 def existsfolder(path):
     if not os.path.exists(path):
         os.makedirs(path)
-
 
 def callbacks(save_path: str, depth: int, cfg: dict) -> List:
     """Keras callbacks which include ModelCheckpoint, CSVLogger, TensorBoard, LearningRateScheduler, TerminateOnNaN
@@ -37,14 +35,12 @@ def callbacks(save_path: str, depth: int, cfg: dict) -> List:
         save_weights_only=False,
         verbose=1)
 
-    existsfolder(f'./{save_path}/logs')
-
-    csv_logger = CSVLogger(filename=f"./{save_path}/logs-{now}.csv",append=True)
+    csv_logger = CSVLogger(filename=f"./{save_path}/log-{now}.csv",append=True)
 
 
     terminate_on_nan = TerminateOnNaN()
 
-    with open(f'./{save_path}/cfg.yaml', 'w') as f:
+    with open(f'./{save_path}/{now}-config.yaml', 'w') as f:
         yaml.dump(cfg, f)
 
     callbacks_list = [csv_logger, model_checkpoint, terminate_on_nan]
