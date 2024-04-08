@@ -4,6 +4,7 @@ from dataloader import HarborfrontClassificationDataset
 import tensorflow as tf
 from utils.callbacks import callbacks
 from utils.misc_utils import *
+from utils.metrics import *
 import numpy as np
 import yaml
 import argparse
@@ -17,12 +18,25 @@ if __name__ == "__main__":
     parser.add_argument("--device", default="/GPU:1", help="Tensorflow device to prioritize", choices=["/CPU:0","/GPU:0", "/GPU:1"])
     parser.add_argument("--wandb", action='store_true', help="Enable Weights and Biases")
     parser.add_argument("--output", default="./models/", help="Where to save the model weights")
-    args = parser.parse_args()
+    args = parser.parse_args()        
 
     print("\n########## CLASSIFY-EXPLAIN-REMOVE ##########")
     #Load configs
     with open (args.config, 'r') as f:
         cfg = yaml.safe_load(f)
+
+    #IF WANDB is enabled
+    if args.wandb:
+        print("\n########## 'Weights and Biases' enabled ##########")
+        import wandb
+        wandb.init(
+        # set the wandb project where this run will be logged
+        project="REPAI_WS01",
+
+        # track hyperparameters and run metadata
+        config=cfg
+    )
+        print("Note: Using logged in credentials:")   
 
     #This is only needed when limiting TF to one GPU
     gpus = tf.config.list_physical_devices('GPU')
@@ -50,18 +64,19 @@ if __name__ == "__main__":
 
         #Where to save model
         network_callbacks = callbacks(
-            save_path=f'assets/{cfg["model"]["name"]}/',
+            save_path=f'assets/{cfg["model"]["name"]}/{cfg["model"]["exp"]}',
             depth=cfg["model"]["size"],
             cfg=cfg
         )
+        
+        if args.wandb:
+            wandb_callback = wandb.keras.WandbMetricsLogger(
+                log_freq=cfg["wandb"]["log_freq"]
+            )
+            network_callbacks.append(wandb_callback)
 
         #Dummy input
         dummy_pred = network(tf.convert_to_tensor(np.random.rand(cfg["training"]["batch_size"],288,384,3)))
-        print("## Dummy data and ouput##")
-        print(dummy_pred)
-        
-        network.summary()
-        network.save("./ResNet56_1cls-pred_only.keras")
 
         #Load datasets
         print("\n########## LOADING DATA ##########")
@@ -88,27 +103,42 @@ if __name__ == "__main__":
         valid_dataloader = valid_dataset.get_data_generator()
         print("")
 
-        #Login WANDB
-        if args.wandb:
-            raise NotImplemented
-
         #Define loss
-        loss = tf.keras.losses.Crossentropy(from_logits=False)
+        loss = tf.keras.losses.BinaryCrossentropy(
+            from_logits=False,
+            label_smoothing=0.0,
+            axis=-1,
+            reduction="sum_over_batch_size",
+        )
 
         #Define learning-rate schedule
         lr_schedule = tf.keras.optimizers.schedules.ExponentialDecay(
             initial_learning_rate=cfg["training"]["lr"],
             decay_steps=cfg["training"]["lr_steps"],
-            decay_rate=0.9)
+            decay_rate=cfg["training"]["lr_decay"])
         
         #Define optimizer
         optimizer= tf.keras.optimizers.SGD(learning_rate=lr_schedule)
+
+        #Compile proper accuracy metrics
+        metrics = []
+        metrics.append(Binary_Accuracy(
+            name="acc_total"
+        ))
+        if len(cfg["model"]["classes"]) > 1:
+            for i, name in enumerate(cfg["model"]["classes"]):
+                metrics.append(
+                    metrics.append(Binary_Accuracy(
+                        name=f"acc_{name}",
+                        element=i
+                    ))
+                )
 
         #Compile model
         network.compile(
             loss=loss,
             optimizer=optimizer,
-            metrics='accuracy',
+            metrics=metrics,
         )
 
         #Complete Training Function
