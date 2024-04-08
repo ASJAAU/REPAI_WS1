@@ -1,7 +1,8 @@
 training:
   epochs: 20
-  lr: 0.01
-  lr_steps: 800
+  lr: 0.1
+  lr_steps: 500
+  lr_decay: 0.9
   batch_size: 32
   validation_steps: 10000
 
@@ -14,16 +15,18 @@ model:
   - "vehicle"
   expose_featuremap: False
   name: "ResNet56_4_class"
-  exp: "experiment01"
+  exp: "test_experiment2"
 
 data:
   root: "/Data/Harborfront_raw/"
-  train: "../Train_data.csv"
-  valid: "../Valid_data.csv"
-  test: "../Test_data.csv"
+  train: "Train_data.csv"
+  valid: "Valid_data.csv"
+  test: "Test_data.csv"
   im_size: 
   - 288
   - 384
   - 3
   binary_cls: True
-  
+
+wandb:
+  log_freq: 100 #Number of batches
