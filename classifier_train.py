@@ -1,6 +1,6 @@
 #from models.resnet import Model, get_block_sizes
 from models.resnet import *
-from REPAI_WS1.utils.dataloader import HarborfrontClassificationDataset
+from data.dataloader import HarborfrontClassificationDataset
 import tensorflow as tf
 from utils.callbacks import callbacks
 from utils.misc_utils import *
@@ -122,17 +122,12 @@ if __name__ == "__main__":
 
         #Compile proper accuracy metrics
         metrics = []
-        metrics.append(Binary_Accuracy(
-            name="acc_total"
-        ))
+        metrics.append(Binary_Accuracy(name="acc_total")) #Total accuracy of model (Mean of all classes)
+        
+        #Add classwise accuracy metrics
         if len(cfg["model"]["classes"]) > 1:
             for i, name in enumerate(cfg["model"]["classes"]):
-                metrics.append(
-                    metrics.append(Binary_Accuracy(
-                        name=f"acc_{name}",
-                        element=i
-                    ))
-                )
+                metrics.append(metrics.append(Binary_Accuracy(name=f"acc_{name}",element=i )))
 
         #Compile model
         network.compile(
