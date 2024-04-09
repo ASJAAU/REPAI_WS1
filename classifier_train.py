@@ -1,6 +1,6 @@
 #from models.resnet import Model, get_block_sizes
 from models.resnet import *
-from dataloader import HarborfrontClassificationDataset
+from REPAI_WS1.utils.dataloader import HarborfrontClassificationDataset
 import tensorflow as tf
 from utils.callbacks import callbacks
 from utils.misc_utils import *
