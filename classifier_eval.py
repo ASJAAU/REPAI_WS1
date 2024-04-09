@@ -6,7 +6,7 @@ from utils.metrics import Binary_Accuracy, binary_accuracy
 import numpy as np
 import yaml
 
-parser = argparse.ArgumentParser("Toggle the exposure of featuremap during forward pass of provided model")
+parser = argparse.ArgumentParser("Evaluate the performance of a trained model on the testset")
 parser.add_argument("config", type=str, help="Path to config file")
 parser.add_argument("weights", type=str, help="Path to the model weight file")
 args = parser.parse_args()

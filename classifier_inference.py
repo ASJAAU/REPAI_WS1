@@ -8,7 +8,7 @@ import numpy as np
 
 __EXT__ = [".jpg", ".png", ".bmp"]
 
-parser = argparse.ArgumentParser("Toggle the exposure of featuremap during forward pass of provided model")
+parser = argparse.ArgumentParser("Run inference with a given model on select input data")
 parser.add_argument("weights", type=str, help="Path to the model weight file")
 parser.add_argument("input", type=str, nargs= '+', help="Path to files/folders to run inference on")
 parser.add_argument("--save", type=str, default=None, help="Path to save the output of inference")
