@@ -4,6 +4,7 @@ from tensorflow.keras.callbacks import ModelCheckpoint, TerminateOnNaN, CSVLogge
 from datetime import datetime
 import os
 import yaml
+from utils.metrics import *
 
 now = datetime.now().strftime("%d-%m-%Y:%H")
 
