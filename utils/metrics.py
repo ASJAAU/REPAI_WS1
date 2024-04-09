@@ -14,9 +14,9 @@ class Binary_Accuracy(MeanMetricWrapper):
 
 def binary_accuracy(y_true, y_pred, threshold=0.5, element=None):
     if element == None:
-        return tf.reduce_mean(metrics_utils.binary_matches(y_true, y_pred))
+        return tf.reduce_mean(metrics_utils.binary_matches(y_true, y_pred), threshold=threshold)
     else:
-        return metrics_utils.binary_matches(tf.transpose(y_true[:,element]), tf.transpose(y_pred[:,element]))
+        return metrics_utils.binary_matches(tf.transpose(y_true[:,element]), tf.transpose(y_pred[:,element]), threshold=threshold)
 
 if __name__ == '__main__':
     pred = [
