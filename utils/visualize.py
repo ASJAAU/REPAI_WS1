@@ -5,7 +5,7 @@ def visualize_prediction(image, predictions, groundtruth=None, classes=["human",
     fig, ax = subplots(1,2)
 
     #zip predictions with class names
-    table_data = [[predictions[i],classes[i]] for i in range(len(classes))]
+    table_data = [[predictions[i],classes[i]] for i in range(len(predictions))]
 
     #Set image
     ax[0].imshow(image)
