@@ -9,6 +9,7 @@ import numpy as np
 
 
 __EXT__ = (".jpg", ".png", ".bmp")
+
 __CLASS_LIST__ = {
     0: "human",
     1: "bicycle",
@@ -20,6 +21,7 @@ parser.add_argument("weights", type=str, help="Path to the model weight file")
 parser.add_argument("input", type=str, nargs= '+', help="Path to files/folders to run inference on")
 parser.add_argument("--save", type=str, default=None, help="Path to save the output of inference")
 parser.add_argument("--dataset_root", type=str, default="/Data/Harborfront_raw/", help="Path to dataset root, in case of loading datasplit")
+parser.add_argument("--classes", nargs='+', type=str, default=["human","bicycle", "motorcycle","vehicle"], help="List of class labels the model has been trained on")
 args = parser.parse_args()
 
 #Load modelweights
@@ -44,7 +46,7 @@ for input in args.input:
         gts.append(None)
     elif os.path.isfile(input) and input.endswith('.csv'):
         split = pd.read_csv(input, sep=";")
-        split["label"] = split.apply(lambda x: [1 if int(x[g]) > 0 else 0 for g in __CLASS_LIST__.values()], axis=1)
+        split["label"] = split.apply(lambda x: [1 if int(x[g]) > 0 else 0 for g in args.classes], axis=1)
         split["file_name"] = split.apply(lambda x: os.path.join(args.dataset_root, x["file_name"]), axis=1)
         images.extend(split["file_name"].to_list())
         gts.extend(split["label"].to_list())
@@ -57,7 +59,7 @@ for input in args.input:
         print(f"Invalid input: '{input}'. Skipping")
 
 samples = zip(images, gts)
-print(len(images), len(gts))
+print(f"Samples: {len(images)} Labels: {len(gts)}")
 
 print("#### INFERRING ####")
 for img, groundtruth in samples:
