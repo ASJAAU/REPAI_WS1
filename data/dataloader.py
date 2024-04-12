@@ -67,14 +67,19 @@ class HarborfrontClassificationDataset():
     def augmentations(self, x,y):
         return x,y
 
-    def get_data_generator(self, batchsize=8):
+    def get_data_generator(self, batchsize=8, augmentations=True):
         #Data Augmentations
-        img_preprocessing = ImageDataGenerator(
-            rescale=1./255, #"Map to range [0-1]"
-            #featurewise_std_normalization=True,
-            brightness_range=(0.75,1.25),
-            horizontal_flip = True,
-            dtype=np.float32)
+        if augmentations:
+            img_preprocessing = ImageDataGenerator(
+                rescale=1./255, #"Map to range [0-1]"
+                #featurewise_std_normalization=True,
+                brightness_range=(0.75,1.25),
+                horizontal_flip = True,
+                dtype=np.float32)
+        else:
+            img_preprocessing = ImageDataGenerator(
+                rescale=1./255, #"Map to range [0-1]"
+                dtype=np.float32)
 
         img_preprocessing.fit(np.random.rand(batchsize,288,384,3).astype(np.float32))
 
