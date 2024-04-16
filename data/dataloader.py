@@ -67,7 +67,7 @@ class HarborfrontClassificationDataset():
     def augmentations(self, x,y):
         return x,y
 
-    def get_data_generator(self, batchsize=8, augmentations=True):
+    def get_data_generator(self, batchsize=8, augmentations=True, resize=(512,512), shuffle_data=True):
         #Data Augmentations
         if augmentations:
             img_preprocessing = ImageDataGenerator(
@@ -90,9 +90,9 @@ class HarborfrontClassificationDataset():
             x_col     = "file_name",
             y_col     = "labels",
             class_mode= "categorical",
-            target_size= (288,384),
+            target_size= resize,
             batch_size = batchsize,
-            shuffle=True,
+            shuffle=shuffle_data,
             data_format='channel_last',
             dtype=np.float32,
         )
