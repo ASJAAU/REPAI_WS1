@@ -10,11 +10,8 @@ model:
   size: 56
   classes:
   - "human"
-  - "bicycle"
-  - "motorcycle"
-  - "vehicle"
   expose_featuremap: False
-  name: "ResNet56_4_class"
+  name: "ResNet56_Human"
   exp: "baseline02"
 
 data:
@@ -27,6 +24,6 @@ data:
   - 384
   - 3
   binary_cls: True
-
+  
 wandb:
   log_freq: 100 #Number of batches
