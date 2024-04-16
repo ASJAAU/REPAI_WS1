@@ -49,24 +49,6 @@ class HarborfrontClassificationDataset():
         if verbose:
             print(f'Successfully loaded "{data_split}" as {self.__repr__()}')
 
-    def get_tf_dataloader(self, batch_size=8, shuffle=True):
-        images,labels  = self.dataset.apply(lambda x: tf.keras.utils.load_img(
-                os.path.join(self.root, x["file_name"]), #Path
-                color_mode='rgb',
-                target_size=(384,288),
-                interpolation='categorical'),
-            axis=1), self.dataset["target"]
-        dataset = tf.data.Dataset.from_tensor_slices((images, labels))
-        dataset.map(self.augmentations)
-        if shuffle:
-            dataset.shuffle().batch(batch_size)
-        else:
-            dataset.batch(batch_size)
-        return dataset
-
-    def augmentations(self, x,y):
-        return x,y
-
     def get_data_generator(self, batchsize=8, augmentations=True, resize=(512,512), shuffle_data=True):
         #Data Augmentations
         if augmentations:
@@ -107,6 +89,25 @@ class HarborfrontClassificationDataset():
     def __str__(self):
         return self.dataset.__str__()
 
+    # def get_tf_dataloader(self, batch_size=8, shuffle=True):
+    #     images,labels  = self.dataset.apply(lambda x: tf.keras.utils.load_img(
+    #             os.path.join(self.root, x["file_name"]), #Path
+    #             color_mode='rgb',
+    #             target_size=(384,288),
+    #             interpolation='categorical'),
+    #         axis=1), self.dataset["target"]
+    #     dataset = tf.data.Dataset.from_tensor_slices((images, labels))
+    #     dataset.map(self.augmentations)
+    #     if shuffle:
+    #         dataset.shuffle().batch(batch_size)
+    #     else:
+    #         dataset.batch(batch_size)
+    #     return dataset
+
+    # def augmentations(self, x,y):
+    #     return x,y
+
+    
 if __name__ == "__main__":
     import numpy as np
     dataset = HarborfrontClassificationDataset("../Test_data.csv", "/Data/Harborfront_raw/")
