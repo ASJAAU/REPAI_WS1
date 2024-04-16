@@ -100,13 +100,18 @@ if __name__ == "__main__":
         #Create dataloader (AS GENERATOR)
         print("\nCreating training dataloader:")
         train_dataloader = train_dataset.get_data_generator(
-            im_size=tuple(inputsize[0],inputsize[1]),
+            resize=tuple([inputsize[0],inputsize[1]]),
             augmentations=False,
             shuffle_data=True,
         )
-        
+
         print("\nCreating validation dataloader:")
-        valid_dataloader = valid_dataset.get_data_generator()
+        valid_dataloader = valid_dataset.get_data_generator(
+            resize=tuple([inputsize[0],inputsize[1]]),
+            augmentations=False,
+            shuffle_data=False,
+        )
+
         print("")
 
         #Define loss
