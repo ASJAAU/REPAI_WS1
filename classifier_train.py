@@ -76,7 +76,8 @@ if __name__ == "__main__":
             network_callbacks.append(wandb_callback)
 
         #Dummy input
-        dummy_pred = network(tf.convert_to_tensor(np.random.rand(cfg["training"]["batch_size"],288,384,3)))
+        inputsize = cfg["data"]["im_size"]
+        dummy_pred = network(tf.convert_to_tensor(np.random.rand(cfg["training"]["batch_size"],inputsize[0],inputsize[1],inputsize[2])))
 
         #Load datasets
         print("\n########## LOADING DATA ##########")
@@ -98,7 +99,12 @@ if __name__ == "__main__":
 
         #Create dataloader (AS GENERATOR)
         print("\nCreating training dataloader:")
-        train_dataloader = train_dataset.get_data_generator()
+        train_dataloader = train_dataset.get_data_generator(
+            im_size=tuple(inputsize[0],inputsize[1]),
+            augmentations=False,
+            shuffle_data=True,
+        )
+        
         print("\nCreating validation dataloader:")
         valid_dataloader = valid_dataset.get_data_generator()
         print("")
@@ -125,9 +131,8 @@ if __name__ == "__main__":
         metrics.append(Binary_Accuracy(name="acc_total")) #Total accuracy of model (Mean of all classes)
         
         #Add classwise accuracy metrics
-        if len(cfg["model"]["classes"]) > 1:
-            for i, name in enumerate(cfg["model"]["classes"]):
-                metrics.append(metrics.append(Binary_Accuracy(name=f"acc_{name}",element=i )))
+        for i, name in enumerate(cfg["model"]["classes"]):
+            metrics.append(metrics.append(Binary_Accuracy(name=f"acc_{name}",element=i )))
 
         #Compile model
         network.compile(
