@@ -74,11 +74,10 @@ def generate_masks_conv_output(input_size, last_conv_output, s= 8):
     """ To generate mask from the last convlutional layers of  CNN model """    
     cell_size = np.ceil(np.array(input_size) / s)
     up_size = (s) * cell_size
-
-        #grid = np.random.rand(N, s, s) < p1
-        #grid = grid.astype('float32')
-        #8, 0.5
-    grid = np.moveaxis(last_conv_output, -1, 0)
+    #grid = np.random.rand(N, s, s) < p1
+    #grid = grid.astype('float32')
+    #8, 0.5
+    grid = np.rollaxis(last_conv_output, 2, 0)
     #grid = np.moveaxis(grid, 1, 3) 
         
     N = len(grid)
@@ -92,13 +91,12 @@ def generate_masks_conv_output(input_size, last_conv_output, s= 8):
         #                        anti_aliasing=False)
         #[x:x + input_size[0], y:y + input_size[1]]
         """extracting the each feature maps of last convlution layer """
-        conv_out = last_conv_output[0,:,:,i]
+        conv_out = last_conv_output[:,:,i]
         """converting last convlayer to binary mask"""
         conv_out = conv_out > 0.1
         conv_out = conv_out.astype('float32')
         """ upsampling the binary mask using bi-linear interpolation (feature activaions masks) """
-        final_resize = resize(conv_out, up_size, order=1, mode='reflect',
-                                anti_aliasing=False)
+        final_resize = resize(conv_out, up_size, order=1, mode='reflect', anti_aliasing=False)
         masks[:, :, i] = final_resize            
 #        masks = masks.reshape(-1, *input_size, 1)
     return masks, grid, cell_size, up_size
@@ -126,18 +124,18 @@ def uniqness_measure(masks_predictions):
     return sum_all_cdist
 
 
-def explain_SIDU(model, inp, N, p1, masks, input_size):
+def explain_SIDU(model, inp, N, p1, masks, input_size, cls_index=0):
     """ SIDU explanation """
     preds = []
     # Make sure multiplication is being done for correct axes
     """ generating the feature image mask for the original image using dot product """
     masked = inp * masks
     """ predicting the score for oringal _input image """
-    pred_org = model.predict(inp)[0]
+    pred_org = model.predict(inp)[cls_index]
     """ predicting the scores for all feature image masks """
     
     for i in tqdm(range(0, N, batch_size), desc='Explaining'):
-        preds.append(model.predict(masked[i:min(i+batch_size, N)])[0])
+        preds.append(model.predict(masked[i:min(i+batch_size, N)])[cls_index])
     preds = np.concatenate(preds)
     
     weights, diff = sim_differences(pred_org, preds)
@@ -217,7 +215,7 @@ if __name__ == '__main__':
   model = tf.keras.models.load_model("../REPAI_WS1/testmodel.hdf5")
 
   ## reading the image from  the folder
-  read_path = "/Data/Harborfront_raw/frames/20210217/clip_38_1743/image_0020.jpg" #join('Data', 'water-bird.JPEG')
+  read_path = "./data/test_images/image_0019.jpg" #join('Data', 'water-bird.JPEG')
   
   ### load the image
   
@@ -227,13 +225,10 @@ if __name__ == '__main__':
   pred_vec, feature_activation_maps = model.predict(x)
 
   #last_conv_output = np.squeeze(feature_activation_maps)
-  
-  
-      
   masks, grid, cell_size, up_size = generate_masks_conv_output((288,384), feature_activation_maps, s= 8)
   ## TO DISPLAY THE FEATURE ACTIVATION IMAGE MASKS
-  mask_ind = masks[:, :, 500]
-  grid_ind = grid[500,:,:]
+  mask_ind = masks[:, :, masks.shape[2]-1]
+  grid_ind = grid[masks.shape[2]-1,:,:]
   new_mask= np.reshape(mask_ind,(288,384))
   new_masks = np.rollaxis(masks, 2, 0)
   size = new_masks.shape
