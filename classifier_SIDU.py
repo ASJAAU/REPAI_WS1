@@ -30,6 +30,10 @@ dependencies = {
 model = tf.keras.models.load_model(args.weights, custom_objects=dependencies)
 model.summary()
 
+#find model input_shape
+print("Adjusting to model input shape:", model.get_layer("input_1").get_config()["batch_input_shape"])
+_, im_h, im_w, im_c = model.get_layer("input_1").get_config()["batch_input_shape"]
+
 print("##### LISTING DATA #####")
 images = []
 gts = []
@@ -53,13 +57,15 @@ for input in args.input:
     else:
         print(f"Invalid input: '{input}'. Skipping")
 
-samples = zip(images, gts)
-print(len(images), len(gts))
+
+samples = list(zip(images, gts))
+
+print(f"Loaded images: {len(images)}", )
 
 print("##### Explaining images #####")
 for img, label in samples:
     #Load image
-    im = tf.keras.utils.load_img(img, color_mode='rgb', target_size=(288,384))
+    im = tf.keras.utils.load_img(img, color_mode='rgb', target_size=(im_h,im_w))
     
     #Normalize (0-1)
     vis = tf.keras.utils.img_to_array(im)/255
@@ -68,38 +74,31 @@ for img, label in samples:
     in_tensor = tf.convert_to_tensor(np.asarray([vis]))
 
     #extract predictions and featuremap
-    pred_vec, feature_activation_maps = model.predict(x)
-
-    #Generate Convolutional masks
-    masks, grid, cell_size, up_size = generate_masks_conv_output((288,384), feature_activation_maps, s= 8)
+    pred_vec, feature_activation_maps = model.predict(in_tensor)
     
-    ## TO DISPLAY THE FEATURE ACTIVATION IMAGE MASKS
-    mask_ind = masks[:, :, 500]
-    grid_ind = grid[500,:,:]
-    new_mask= np.reshape(mask_ind,(288,384))
-    new_masks = np.rollaxis(masks, 2, 0)
-    size = new_masks.shape
-    data = new_masks.reshape(size[0], size[1], size[2], 1)
-    masked = x * data
-    #     plt.subplot(1, 3, 2)
-    #     plt.imshow(new_mask)
-    #     plt.subplot(1, 3, 1)
-    #     plt.imshow(grid_ind)
-    #     plt.subplot(1, 3, 3)
-    #     plt.imshow(masked[500,:,:])
-    N = len(new_masks)
+    #accumulate XAIs
+    heatmaps = []
+    for i, pred in enumerate(pred_vec):
+        #Generate Convolutional masks
+        masks, grid, cell_size, up_size = generate_masks_conv_output((im_h,im_w), feature_activation_maps, s= 8)
+    
+        ## TO DISPLAY THE FEATURE ACTIVATION IMAGE MASKS
+        mask_ind = masks[:, :, masks.shape[2]-1]
+        grid_ind = grid[masks.shape[2]-1,:,:]
+        new_mask= np.reshape(mask_ind,(im_h,im_w))
+        new_masks = np.rollaxis(masks, 2, 0)
+        size = new_masks.shape
+        data = new_masks.reshape(size[0], size[1], size[2], 1)
+        masked = in_tensor * data
+        N = len(new_masks)
 
-    # Visual explnations for the object class  
-    sal, weights, new_interactions, diff_interactions, pred_org = explain_SIDU(model, x, N, 0.5, data, (288,384))
-        
+        # Visual explnations for the object class  
+        sal, weights, new_interactions, diff_interactions, pred_org = explain_SIDU(model, in_tensor, N, 0.5, data, (288,384))
+        heatmaps.append(sal)
     #show explination
-    figure = visualize_prediction(img, pred_vec, label, sal[0], args.classes)
-    plt.title(f'Does the image contain `cls_{class_idx}`')
-    plt.axis('off')
-    plt.imshow(img)
-    plt.imshow(sal[0], cmap='jet', alpha=0.5)
-    plt.axis('off') 
-    # plt.colorbar()
-    plt.show()
-    plt.savefig("testim.png")
+    figure = visualize_prediction(im, pred_vec, groundtruth=label, heatmaps=heatmaps, classes=args.classes)
+    
+    #Save?
+    if args.save is not None:
+        figure.savefig(os.path.join(args.save, f"XAI_{os.path.basename(img)}"))
  
