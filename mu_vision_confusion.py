@@ -13,8 +13,8 @@ if __name__ == "__main__":
     #CLI
     parser = argparse.ArgumentParser("Perform vision confusion MU method on selected model.")
     #Positionals
-    parser.add_argument("weights", type=str, help="Path to the model weight file")
-    parser.add_argument("config", type=str, help="Path to config file (YAML)")
+    parser.add_argument("--weights", type=str, help="Path to the model weight file")
+    parser.add_argument("--config", type=str, help="Path to config file (YAML)")
     #Optional
     parser.add_argument("--device", default="/GPU:1", help="Tensorflow device to prioritize", choices=["/CPU:0","/GPU:0", "/GPU:1"])
     parser.add_argument("--wandb", action='store_true', help="Enable Weights and Biases")
@@ -22,6 +22,7 @@ if __name__ == "__main__":
     args = parser.parse_args()      
 
     #Load configs
+    print("Loading configs..")
     with open (args.config, 'r') as f:
         cfg = yaml.safe_load(f)  
 
