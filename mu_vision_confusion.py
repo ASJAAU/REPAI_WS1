@@ -13,23 +13,17 @@ if __name__ == "__main__":
     #CLI
     parser = argparse.ArgumentParser("Perform vision confusion MU method on selected model.")
     #Positionals
-    parser.add_argument("weights", type=str, help="Path to the model weight file"))
+    parser.add_argument("weights", type=str, help="Path to the model weight file")
+    parser.add_argument("config", type=str, help="Path to config file (YAML)")
     #Optional
     parser.add_argument("--device", default="/GPU:1", help="Tensorflow device to prioritize", choices=["/CPU:0","/GPU:0", "/GPU:1"])
     parser.add_argument("--wandb", action='store_true', help="Enable Weights and Biases")
     parser.add_argument("--output", default="./models/", help="Where to save the model weights")
-    args = parser.parse_args()        
+    args = parser.parse_args()      
 
-    #Load modelweights
-    print("##### LOADING MODEL #####")
-    #Specify custom objects the model was compiled with
-    dependencies = {
-        "Binary_Accuracy": Binary_Accuracy,
-        "binary_accuracy": binary_accuracy
-    }
-    #Load model
-    model = tf.keras.models.load_model(args.weights, custom_objects=dependencies)
-    model.summary()
+    #Load configs
+    with open (args.config, 'r') as f:
+        cfg = yaml.safe_load(f)  
 
     #IF WANDB is enabled
     if args.wandb:
@@ -57,16 +51,16 @@ if __name__ == "__main__":
             print(e)    
 
     with tf.device(args.device):
-        #Define Model
-        print("\n########## BUILDING MODEL ##########")
-        print(f'Building model: ResNet{cfg["model"]["size"]}')
-        network = build_resnet_model(
-            input_shape=tuple(cfg["data"]["im_size"]),
-            depth = cfg["model"]["size"],
-            num_classes=len(cfg["model"]["classes"]),
-            expose_features=cfg["model"]["expose_featuremap"],
-            name=cfg["model"]["name"]
-        )
+        #Load modelweights
+        print("##### LOADING MODEL #####")
+        #Specify custom objects the model was compiled with
+        dependencies = {
+            "Binary_Accuracy": Binary_Accuracy,
+            "binary_accuracy": binary_accuracy
+        }
+        #Load model
+        model = tf.keras.models.load_model(args.weights, custom_objects=dependencies)
+        model.summary()
 
         #Where to save model
         network_callbacks = callbacks(
@@ -82,72 +76,75 @@ if __name__ == "__main__":
             network_callbacks.append(wandb_callback)
 
         #Dummy input
-        dummy_pred = network(tf.convert_to_tensor(np.random.rand(cfg["training"]["batch_size"],288,384,3)))
+        dummy_pred = model(tf.convert_to_tensor(np.random.rand(cfg["training"]["batch_size"],288,384,3)))
+        print("Dummy prediction shape:", dummy_pred.shape)
+        print("Dummy prediction:", dummy_pred)
 
-        #Load datasets
-        print("\n########## LOADING DATA ##########")
-        train_dataset = HarborfrontClassificationDataset(
-            data_split=cfg["data"]["train"],
-            root=cfg["data"]["root"],
-            classes=cfg["model"]["classes"],
-            verbose=True, #Print status and overview
-            binary_cls=cfg["data"]["binary_cls"],
-            )
 
-        valid_dataset = HarborfrontClassificationDataset(
-            data_split=cfg["data"]["valid"],
-            root=cfg["data"]["root"],
-            classes=cfg["model"]["classes"],
-            verbose=True, #Print status and overview
-            binary_cls=cfg["data"]["binary_cls"],
-            )
+        # #Load datasets
+        # print("\n########## LOADING DATA ##########")
+        # train_dataset = HarborfrontClassificationDataset(
+        #     data_split=cfg["data"]["train"],
+        #     root=cfg["data"]["root"],
+        #     classes=cfg["model"]["classes"],
+        #     verbose=True, #Print status and overview
+        #     binary_cls=cfg["data"]["binary_cls"],
+        #     )
 
-        #Create dataloader (AS GENERATOR)
-        print("\nCreating training dataloader:")
-        train_dataloader = train_dataset.get_data_generator()
-        print("\nCreating validation dataloader:")
-        valid_dataloader = valid_dataset.get_data_generator()
-        print("")
+        # valid_dataset = HarborfrontClassificationDataset(
+        #     data_split=cfg["data"]["valid"],
+        #     root=cfg["data"]["root"],
+        #     classes=cfg["model"]["classes"],
+        #     verbose=True, #Print status and overview
+        #     binary_cls=cfg["data"]["binary_cls"],
+        #     )
 
-        #Define loss
-        loss = tf.keras.losses.BinaryCrossentropy(
-            from_logits=False,
-            label_smoothing=0.0,
-            axis=-1,
-            reduction="sum_over_batch_size",
-        )
+        # #Create dataloader (AS GENERATOR)
+        # print("\nCreating training dataloader:")
+        # train_dataloader = train_dataset.get_data_generator()
+        # print("\nCreating validation dataloader:")
+        # valid_dataloader = valid_dataset.get_data_generator()
+        # print("")
 
-        #Define learning-rate schedule
-        lr_schedule = tf.keras.optimizers.schedules.ExponentialDecay(
-            initial_learning_rate=cfg["training"]["lr"],
-            decay_steps=cfg["training"]["lr_steps"],
-            decay_rate=cfg["training"]["lr_decay"])
+        # #Define loss
+        # loss = tf.keras.losses.BinaryCrossentropy(
+        #     from_logits=False,
+        #     label_smoothing=0.0,
+        #     axis=-1,
+        #     reduction="sum_over_batch_size",
+        # )
+
+        # #Define learning-rate schedule
+        # lr_schedule = tf.keras.optimizers.schedules.ExponentialDecay(
+        #     initial_learning_rate=cfg["training"]["lr"],
+        #     decay_steps=cfg["training"]["lr_steps"],
+        #     decay_rate=cfg["training"]["lr_decay"])
         
-        #Define optimizer
-        optimizer= tf.keras.optimizers.SGD(learning_rate=lr_schedule)
+        # #Define optimizer
+        # optimizer= tf.keras.optimizers.SGD(learning_rate=lr_schedule)
 
-        #Compile proper accuracy metrics
-        metrics = []
-        metrics.append(Binary_Accuracy(name="acc_total")) #Total accuracy of model (Mean of all classes)
+        # #Compile proper accuracy metrics
+        # metrics = []
+        # metrics.append(Binary_Accuracy(name="acc_total")) #Total accuracy of model (Mean of all classes)
         
-        #Add classwise accuracy metrics
-        if len(cfg["model"]["classes"]) > 1:
-            for i, name in enumerate(cfg["model"]["classes"]):
-                metrics.append(metrics.append(Binary_Accuracy(name=f"acc_{name}",element=i )))
+        # #Add classwise accuracy metrics
+        # if len(cfg["model"]["classes"]) > 1:
+        #     for i, name in enumerate(cfg["model"]["classes"]):
+        #         metrics.append(metrics.append(Binary_Accuracy(name=f"acc_{name}",element=i )))
 
-        #Compile model
-        network.compile(
-            loss=loss,
-            optimizer=optimizer,
-            metrics=metrics,
-        )
+        # #Compile model
+        # model.compile(
+        #     loss=loss,
+        #     optimizer=optimizer,
+        #     metrics=metrics,
+        # )
 
-        #Complete Training Function
-        rep = network.fit(
-            train_dataloader,
-            epochs=cfg["training"]["epochs"],
-            steps_per_epoch=int(len(train_dataloader)/cfg["training"]["batch_size"]),
-            callbacks=network_callbacks,
-            validation_data=valid_dataloader,
-            validation_steps=int(len(valid_dataloader)/cfg["training"]["batch_size"]),
-        )
+        # #Complete Training Function
+        # rep = model.fit(
+        #     train_dataloader,
+        #     epochs=cfg["training"]["epochs"],
+        #     steps_per_epoch=int(len(train_dataloader)/cfg["training"]["batch_size"]),
+        #     callbacks=network_callbacks,
+        #     validation_data=valid_dataloader,
+        #     validation_steps=int(len(valid_dataloader)/cfg["training"]["batch_size"]),
+        # )
