@@ -79,9 +79,32 @@ if __name__ == "__main__":
         #Dummy input
         dummy_pred = model(tf.convert_to_tensor(np.random.rand(cfg["training"]["batch_size"],288,384,3)))
         print("Dummy prediction shape:", dummy_pred.shape)
-        print("Dummy prediction:", dummy_pred)
 
+        print("Layers:")
+        convs = [layer.get_weights() for layer in model.layers if layer.name[:6]=="conv2d"]
+        for i, conv in enumerate(convs): 
+            print("Convolution layer ", i)
+            kernel = conv[0].copy()
+            bias = conv[1].copy()
+            for j in range(kernel.shape[2]):
+                for k in range(kernel.shape[3]):
+            # print("kernel:\n", kernel.shape)
+            # print(kernel[0].shape)
+            # print(kernel[0,0].shape)
+            # print(kernel[:,:,0,0].shape)
+            # print(kernel[:,:,0,0])
+            # print("bias:\n", bias.shape)
+                    kernel[:,:,j,k] = tf.transpose(kernel[:,:,j,k])
+                    std = tf.keras.backend.get_value(tf.math.reduce_std(kernel[:,:,j,k]))/10
+                    # print("transposed kernel:")
+                    # print(kernel[:,:,0,0])
+                    # print("std", std)
+                    mat = np.random.normal(0, std, size=kernel[:,:,j,k].shape)
+                    if std == 0:
+                        std = abs(kernel[0,0,j,k].copy())/10
+                        print("HOLA std", std)
 
+                    break
         # #Load datasets
         # print("\n########## LOADING DATA ##########")
         # train_dataset = HarborfrontClassificationDataset(
