@@ -73,15 +73,27 @@ def confuse_vision(model, noise_scale=0.1):
 
 
 
-class forget_loss(tf.losses.Loss):
-    # Maybe instead of doing this is better to set every label of the class to forget to 0,
-    # so that it forces the weights that go to that class to cancel out.
-    def __init__(self, forget_class):
-        self.forget_class = forget_class
+def forget_human_loss(y_true, y_pred):
+    """ Custom loss function for forgetting human presence.
+    Applies binary crossentropy to each class and ignores the human class.
+    - y_true: true labels
+    - y_pred: predicted labels
+    """
+    # Get the number of classes
+    n_classes = y_true.shape[1]
+
+    print("n_classes: ", n_classes)
+    print("y_true shape: ", y_true.shape)
+    print("y_pred shape: ", y_pred.shape)
     
-    def call():
-        # Like BinaryCrossEntropy but without counting the class to forget
-        pass
-
-
+    # Get the index of the human class
+    human_idx = 0
+    
+    # Compute the loss for each class
+    loss = 0
+    for i in range(n_classes):
+        if i != human_idx:
+            loss += tf.keras.losses.binary_crossentropy(y_true[:,i], y_pred[:,i])
+    
+    return loss
         

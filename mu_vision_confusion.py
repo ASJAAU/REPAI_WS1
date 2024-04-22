@@ -4,7 +4,7 @@ from data.dataloader import HarborfrontClassificationDataset
 from utils.callbacks import callbacks
 from utils.misc_utils import *
 from utils.metrics import *
-from utils.mu_utils import confuse_vision
+from utils.mu_utils import confuse_vision, forget_human_loss
 
 import tensorflow as tf
 import numpy as np
@@ -110,14 +110,6 @@ if __name__ == "__main__":
         valid_dataloader = valid_dataset.get_data_generator()
         print("")
 
-        #Define loss
-        loss = tf.keras.losses.BinaryCrossentropy(
-            from_logits=False,
-            label_smoothing=0.0,
-            axis=-1,
-            reduction="sum_over_batch_size",
-        )
-
         #Define learning-rate schedule
         lr_schedule = tf.keras.optimizers.schedules.ExponentialDecay(
             initial_learning_rate=cfg["training"]["lr"],
@@ -138,7 +130,7 @@ if __name__ == "__main__":
 
         #Compile model
         model.compile(
-            loss=loss,
+            loss=forget_human_loss,
             optimizer=optimizer,
             metrics=metrics,
         )
