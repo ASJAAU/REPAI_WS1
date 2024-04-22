@@ -1,10 +1,12 @@
 #from models.resnet import Model, get_block_sizes
 from models.resnet import *
 from data.dataloader import HarborfrontClassificationDataset
-import tensorflow as tf
 from utils.callbacks import callbacks
 from utils.misc_utils import *
 from utils.metrics import *
+from utils.mu_utils import confuse_vision
+
+import tensorflow as tf
 import numpy as np
 import yaml
 import argparse
@@ -80,95 +82,73 @@ if __name__ == "__main__":
         dummy_pred = model(tf.convert_to_tensor(np.random.rand(cfg["training"]["batch_size"],288,384,3)))
         print("Dummy prediction shape:", dummy_pred.shape)
 
-        print("Layers:")
-        convs = [layer.get_weights() for layer in model.layers if layer.name[:6]=="conv2d"]
-        for i, conv in enumerate(convs): 
-            print("Convolution layer ", i)
-            kernel = conv[0].copy()
-            bias = conv[1].copy()
-            for j in range(kernel.shape[2]):
-                for k in range(kernel.shape[3]):
-            # print("kernel:\n", kernel.shape)
-            # print(kernel[0].shape)
-            # print(kernel[0,0].shape)
-            # print(kernel[:,:,0,0].shape)
-            # print(kernel[:,:,0,0])
-            # print("bias:\n", bias.shape)
-                    kernel[:,:,j,k] = tf.transpose(kernel[:,:,j,k])
-                    std = tf.keras.backend.get_value(tf.math.reduce_std(kernel[:,:,j,k]))/10
-                    # print("transposed kernel:")
-                    # print(kernel[:,:,0,0])
-                    # print("std", std)
-                    mat = np.random.normal(0, std, size=kernel[:,:,j,k].shape)
-                    if std == 0:
-                        std = abs(kernel[0,0,j,k].copy())/10
-                        print("HOLA std", std)
-
-                    break
-        # #Load datasets
-        # print("\n########## LOADING DATA ##########")
-        # train_dataset = HarborfrontClassificationDataset(
-        #     data_split=cfg["data"]["train"],
-        #     root=cfg["data"]["root"],
-        #     classes=cfg["model"]["classes"],
-        #     verbose=True, #Print status and overview
-        #     binary_cls=cfg["data"]["binary_cls"],
-        #     )
-
-        # valid_dataset = HarborfrontClassificationDataset(
-        #     data_split=cfg["data"]["valid"],
-        #     root=cfg["data"]["root"],
-        #     classes=cfg["model"]["classes"],
-        #     verbose=True, #Print status and overview
-        #     binary_cls=cfg["data"]["binary_cls"],
-        #     )
-
-        # #Create dataloader (AS GENERATOR)
-        # print("\nCreating training dataloader:")
-        # train_dataloader = train_dataset.get_data_generator()
-        # print("\nCreating validation dataloader:")
-        # valid_dataloader = valid_dataset.get_data_generator()
-        # print("")
-
-        # #Define loss
-        # loss = tf.keras.losses.BinaryCrossentropy(
-        #     from_logits=False,
-        #     label_smoothing=0.0,
-        #     axis=-1,
-        #     reduction="sum_over_batch_size",
-        # )
-
-        # #Define learning-rate schedule
-        # lr_schedule = tf.keras.optimizers.schedules.ExponentialDecay(
-        #     initial_learning_rate=cfg["training"]["lr"],
-        #     decay_steps=cfg["training"]["lr_steps"],
-        #     decay_rate=cfg["training"]["lr_decay"])
+        # Confuse vision (add Gaussian noise to conv2d layers)
+        model = confuse_vision(model)
         
-        # #Define optimizer
-        # optimizer= tf.keras.optimizers.SGD(learning_rate=lr_schedule)
+        #Load datasets
+        print("\n########## LOADING DATA ##########")
+        train_dataset = HarborfrontClassificationDataset(
+            data_split=cfg["data"]["train"],
+            root=cfg["data"]["root"],
+            classes=cfg["model"]["classes"],
+            verbose=True, #Print status and overview
+            binary_cls=cfg["data"]["binary_cls"],
+            )
 
-        # #Compile proper accuracy metrics
-        # metrics = []
-        # metrics.append(Binary_Accuracy(name="acc_total")) #Total accuracy of model (Mean of all classes)
+        valid_dataset = HarborfrontClassificationDataset(
+            data_split=cfg["data"]["valid"],
+            root=cfg["data"]["root"],
+            classes=cfg["model"]["classes"],
+            verbose=True, #Print status and overview
+            binary_cls=cfg["data"]["binary_cls"],
+            )
+
+        #Create dataloader (AS GENERATOR)
+        print("\nCreating training dataloader:")
+        train_dataloader = train_dataset.get_data_generator()
+        print("\nCreating validation dataloader:")
+        valid_dataloader = valid_dataset.get_data_generator()
+        print("")
+
+        #Define loss
+        loss = tf.keras.losses.BinaryCrossentropy(
+            from_logits=False,
+            label_smoothing=0.0,
+            axis=-1,
+            reduction="sum_over_batch_size",
+        )
+
+        #Define learning-rate schedule
+        lr_schedule = tf.keras.optimizers.schedules.ExponentialDecay(
+            initial_learning_rate=cfg["training"]["lr"],
+            decay_steps=cfg["training"]["lr_steps"],
+            decay_rate=cfg["training"]["lr_decay"])
         
-        # #Add classwise accuracy metrics
-        # if len(cfg["model"]["classes"]) > 1:
-        #     for i, name in enumerate(cfg["model"]["classes"]):
-        #         metrics.append(metrics.append(Binary_Accuracy(name=f"acc_{name}",element=i )))
+        #Define optimizer
+        optimizer= tf.keras.optimizers.SGD(learning_rate=lr_schedule)
 
-        # #Compile model
-        # model.compile(
-        #     loss=loss,
-        #     optimizer=optimizer,
-        #     metrics=metrics,
-        # )
+        #Compile proper accuracy metrics
+        metrics = []
+        metrics.append(Binary_Accuracy(name="acc_total")) #Total accuracy of model (Mean of all classes)
+        
+        #Add classwise accuracy metrics
+        if len(cfg["model"]["classes"]) > 1:
+            for i, name in enumerate(cfg["model"]["classes"]):
+                metrics.append(metrics.append(Binary_Accuracy(name=f"acc_{name}",element=i )))
 
-        # #Complete Training Function
-        # rep = model.fit(
-        #     train_dataloader,
-        #     epochs=cfg["training"]["epochs"],
-        #     steps_per_epoch=int(len(train_dataloader)/cfg["training"]["batch_size"]),
-        #     callbacks=network_callbacks,
-        #     validation_data=valid_dataloader,
-        #     validation_steps=int(len(valid_dataloader)/cfg["training"]["batch_size"]),
-        # )
+        #Compile model
+        model.compile(
+            loss=loss,
+            optimizer=optimizer,
+            metrics=metrics,
+        )
+
+        #Complete Training Function
+        rep = model.fit(
+            train_dataloader,
+            epochs=cfg["training"]["epochs"],
+            steps_per_epoch=int(len(train_dataloader)/cfg["training"]["batch_size"]),
+            callbacks=network_callbacks,
+            validation_data=valid_dataloader,
+            validation_steps=int(len(valid_dataloader)/cfg["training"]["batch_size"]),
+        )

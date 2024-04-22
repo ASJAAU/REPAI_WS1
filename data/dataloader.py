@@ -50,7 +50,7 @@ class HarborfrontClassificationDataset():
             print(f'Successfully loaded "{data_split}" as {self.__repr__()}')
 
     def get_tf_dataloader(self, batch_size=8, shuffle=True):
-        images,labels  = self.dataset.apply(lambda x: tf.keras.utils.load_img(
+        images,labels = self.dataset.apply(lambda x: tf.keras.utils.load_img(
                 os.path.join(self.root, x["file_name"]), #Path
                 color_mode='rgb',
                 target_size=(384,288),
