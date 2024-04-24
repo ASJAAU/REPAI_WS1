@@ -61,6 +61,7 @@ if __name__ == "__main__":
             "Binary_Accuracy": Binary_Accuracy,
             "binary_accuracy": binary_accuracy
         }
+
         #Load model
         model = tf.keras.models.load_model(args.weights, custom_objects=dependencies)
         model.summary()
@@ -79,11 +80,14 @@ if __name__ == "__main__":
             network_callbacks.append(wandb_callback)
 
         #Dummy input
-        dummy_pred = model(tf.convert_to_tensor(np.random.rand(cfg["training"]["batch_size"],288,384,3)))
+        inputsize = cfg["data"]["img_size"]
+        dummy_pred = model(tf.convert_to_tensor(np.random.rand(cfg["training"]["batch_size"],inputsize[0],inputsize[1],inputsize[2])))
         print("Dummy prediction shape:", dummy_pred.shape)
 
         # Confuse vision (add Gaussian noise to conv2d layers)
-        model = confuse_vision(model)
+        print("\n######## FORGETTING DATA #########")
+        model = confuse_vision(model, noise_scale = 0.08)
+        model.summary()
         
         #Load datasets
         print("\n########## LOADING DATA ##########")
@@ -91,7 +95,7 @@ if __name__ == "__main__":
             data_split=cfg["data"]["train"],
             root=cfg["data"]["root"],
             classes=cfg["model"]["classes"],
-            verbose=True, #Print status and overview
+            verbose=True,
             binary_cls=cfg["data"]["binary_cls"],
             )
 
@@ -100,14 +104,24 @@ if __name__ == "__main__":
             root=cfg["data"]["root"],
             classes=cfg["model"]["classes"],
             verbose=True, #Print status and overview
-            binary_cls=cfg["data"]["binary_cls"],
+            binary_cls=cfg["data"]["binary_cls"]
             )
 
         #Create dataloader (AS GENERATOR)
         print("\nCreating training dataloader:")
-        train_dataloader = train_dataset.get_data_generator()
+        train_dataloader = train_dataset.get_data_generator(
+                resize=tuple([inputsize[0], inputsize[1]]),
+                augmentations=False,
+                shuffle_data=True
+        )
+
         print("\nCreating validation dataloader:")
-        valid_dataloader = valid_dataset.get_data_generator()
+        valid_dataloader = valid_dataset.get_data_generator(
+                resize=tuple([inputsize[0], inputsize[1]]),
+                augmentations=False,
+                shuffle_data=False,
+        )
+
         print("")
 
         #Define learning-rate schedule
@@ -124,11 +138,11 @@ if __name__ == "__main__":
         metrics.append(Binary_Accuracy(name="acc_total")) #Total accuracy of model (Mean of all classes)
         
         #Add classwise accuracy metrics
-        if len(cfg["model"]["classes"]) > 1:
-            for i, name in enumerate(cfg["model"]["classes"]):
-                metrics.append(metrics.append(Binary_Accuracy(name=f"acc_{name}",element=i )))
+        for i, name in enumerate(cfg["model"]["classes"]):
+            metrics.append(metrics.append(Binary_Accuracy(name=f"acc_{name}",element=i )))
 
         #Compile model
+        print("####### REMEMBER DATA #######")
         model.compile(
             loss=forget_human_loss,
             optimizer=optimizer,

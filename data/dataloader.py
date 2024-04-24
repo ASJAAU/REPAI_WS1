@@ -36,6 +36,9 @@ class HarborfrontClassificationDataset():
 
         #Reconstruct Dataframe with only training data
         self.dataset = pd.DataFrame(dataset)
+        
+        #### ADD /Data to path
+        self.dataset["file_name"] = "/Data/" + self.dataset["file_name"].astype(str)
 
         #convert to binary (object/noobject)?
         if binary_cls:
@@ -110,10 +113,11 @@ class HarborfrontClassificationDataset():
     
 if __name__ == "__main__":
     import numpy as np
-    dataset = HarborfrontClassificationDataset("../Test_data.csv", "/Data/Harborfront_raw/")
+    dataset = HarborfrontClassificationDataset("/Data/REPAI_WS/Test_data.csv", "/Data/Harborfront_raw/")
     print(dataset)
 
     input("Press Enter to continue...")
+    print(dataset.get_data_generator(batchsize=8))
     for i, (imgs,targets) in enumerate(dataset.get_data_generator(batchsize=8)):
         print(f'------ Batch: {i} ------')
         print(f'tensor: {imgs.shape}', f'type: {type(imgs)} - {imgs.dtype}')
@@ -122,7 +126,10 @@ if __name__ == "__main__":
         print("--images--")
         for im in imgs:
             print(im)
+        print(imgs)
         input("Press Enter for labels")
         print("--Labels--")
         for label in targets:
             print(label)
+
+        print(targets)

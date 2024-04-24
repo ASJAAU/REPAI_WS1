@@ -1,0 +1,32 @@
+training:
+        epochs: 5 
+        lr: 0.1
+        lr_steps: 5000
+        lr_decay: 0.9
+        batch_size: 8
+        validation_steps: 10000
+
+model:
+        size: 56
+        classes:
+                - "human"
+                - "bicycle"
+                - "motorcycle"
+                - "vehicle"
+        expose_featuremap: False
+        name: "ResNet56_forget_human_vcb8"
+        exp: "vision confusion with batch size 8 and noise scale 0.08"
+
+data:
+        root: "/Data/Harborfront_raw/"
+        train: "/Data/REPAI_WS/Train_data.csv"
+        valid: "/Data/REPAI_WS/Valid_data.csv"
+        test: "/Data/REPAI_WS/Test_data.csv"
+        img_size:
+        - 288
+        - 384
+        - 3
+        binary_cls: True
+
+wandb:
+        log_freq: 100
