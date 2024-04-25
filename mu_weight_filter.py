@@ -51,16 +51,17 @@ if __name__ == "__main__":
             print(e)    
 
     with tf.device(args.device):
-        #Define Model
-        print("\n########## BUILDING MODEL ##########")
-        print(f'Building model: ResNet{cfg["model"]["size"]}')
-        network = build_resnet_model(
-            input_shape=tuple(cfg["data"]["im_size"]),
-            depth = cfg["model"]["size"],
-            num_classes=len(cfg["model"]["classes"]),
-            expose_features=cfg["model"]["expose_featuremap"],
-            name=cfg["model"]["name"]
-        )
+        #Load modelweights
+        print("##### LOADING MODEL #####")
+        #Specify custom objects the model was compiled with
+        dependencies = {
+            "Binary_Accuracy": Binary_Accuracy,
+            "binary_accuracy": binary_accuracy
+        }
+
+        #Load model
+        model = tf.keras.models.load_model(args.weights, custom_objects=dependencies)
+        model.summary()
 
         #Where to save model
         network_callbacks = callbacks(
@@ -76,7 +77,48 @@ if __name__ == "__main__":
             network_callbacks.append(wandb_callback)
 
         #Dummy input
-        dummy_pred = network(tf.convert_to_tensor(np.random.rand(cfg["training"]["batch_size"],288,384,3)))
+        inputsize = cfg["data"]["img_size"]
+        dummy_pred = model(tf.convert_to_tensor(np.random.rand(cfg["training"]["batch_size"],inputsize[0],inputsize[1],inputsize[2])))
+        print("Dummy prediction shape:", dummy_pred.shape)
+         
+        #Define Weight Filter model
+        print("\n########## BUILDING WEIGHT FILTER ##########")
+        # Freeze all layers
+        model.trainable = False
+        # Number of classes
+        n_class = len(cfg["model"]["classes"])
+        # Initialize the weight filter model 
+        # it is a list of layers that will be used to filter the weights of the original model
+        weight_filter_model = []
+        for layer in model.layers:
+            if isinstance(layer, tf.keras.layers.Conv2D):
+                w, b = layer.get_weights()
+                print("Layer weights shape:", w.shape)
+                print("Layer bias shape:", b.shape)
+                # w has shape (k, k, c_in, c_out)
+                # b has shape (c_out,)
+                # Create a tensor of trainable weights with shape (c_out, n_class) initialized with 3
+                w_filter = tf.Variable(tf.ones((w.shape[-1], n_class)) * 3, trainable=True)
+                # Create a tensor of trainable biases with shape (c_out, n_class) initialized with 3
+                b_filter = tf.Variable(tf.ones((w.shape[-1], n_class)) * 3, trainable=True)
+                # Add the weights and biases to the weight filter model
+                weight_filter_model.append([w_filter, b_filter])
+
+        #Where to save model
+        network_callbacks = callbacks(
+            save_path=f'assets/{cfg["model"]["name"]}/{cfg["model"]["exp"]}',
+            depth=cfg["model"]["size"],
+            cfg=cfg
+        )
+        
+        if args.wandb:
+            wandb_callback = wandb.keras.WandbMetricsLogger(
+                log_freq=cfg["wandb"]["log_freq"]
+            )
+            network_callbacks.append(wandb_callback)
+
+        #Dummy input
+        dummy_pred = model(tf.convert_to_tensor(np.random.rand(cfg["training"]["batch_size"],288,384,3)))
 
         #Load datasets
         print("\n########## LOADING DATA ##########")
@@ -129,19 +171,41 @@ if __name__ == "__main__":
             for i, name in enumerate(cfg["model"]["classes"]):
                 metrics.append(metrics.append(Binary_Accuracy(name=f"acc_{name}",element=i )))
 
-        #Compile model
-        network.compile(
-            loss=loss,
-            optimizer=optimizer,
-            metrics=metrics,
-        )
+        # Training loop
+        print("\n########## TRAINING WEIGHT FILTER ##########")
+        for epoch in range(cfg["training"]["epochs"]):
+            for i, (X, y) in enumerate(train_dataloader):
+                with tf.GradientTape() as tape:
+                    # Personalized forward pass
+                    y_pred = X
+                    for j, layer in enumerate(model.layers):
+                        if isinstance(layer, tf.keras.layers.Conv2D):
+                            w, b = layer.get_weights()
+                            w_filter, b_filter = weight_filter_model[j]
 
-        #Complete Training Function
-        rep = network.fit(
-            train_dataloader,
-            epochs=cfg["training"]["epochs"],
-            steps_per_epoch=int(len(train_dataloader)/cfg["training"]["batch_size"]),
-            callbacks=network_callbacks,
-            validation_data=valid_dataloader,
-            validation_steps=int(len(valid_dataloader)/cfg["training"]["batch_size"]),
-        )
+                            #### REMAINS TO BE IMPLEMENTED ####
+                            # How to apply the filter to the weights and biases?
+                            # How to define the loss function when output is a 4-dim vector?
+                            # How to deal with multi binary classification?
+                            # For each class, apply the corresponding filter, but all classes 
+                            # are given at the same time. How to deal with this?
+
+                            # Apply the filter to the weights and biases
+                            w = tf.matmul(w, w_filter)
+                            b = tf.matmul(b, b_filter)
+                            # Apply the convolution
+                            y_pred = tf.nn.conv2d(y_pred, w, strides=[1, 1, 1, 1], padding="SAME") + b
+                            # Apply the activation
+                            y_pred = tf.nn.relu(y_pred)
+                        else:
+                            y_pred = layer(y_pred)
+                    # Compute loss
+                    loss_value = loss(y, y_pred)
+                    # Compute gradients
+                    gradients = tape.gradient(loss_value, model.trainable_weights)
+                    # Apply gradients
+                    optimizer.apply_gradients(zip(gradients, model.trainable_weights))
+
+                # Print training info
+                if i % 10 == 0:
+                    print(f"Epoch {epoch}, Step {i}, Loss: {loss_value}")
