@@ -1,10 +1,15 @@
 training:
-        epochs: 5 
+        epochs: 10
         lr: 0.1
         lr_steps: 5000
         lr_decay: 0.9
-        batch_size: 8
+        batch_size: 32
         validation_steps: 10000
+
+unlearning:
+        noise_scale: 15
+        noise_scale_2: 0.1
+        epochs_2: 1
 
 model:
         size: 56
@@ -14,8 +19,8 @@ model:
                 - "motorcycle"
                 - "vehicle"
         expose_featuremap: False
-        name: "ResNet56_forget_human_vcb8"
-        exp: "vision confusion with batch size 8 and noise scale 0.08"
+        name: "ResNet56_forget_human"
+        exp: "vc_b32_2rounds_e10_1_e15_0.1"
 
 data:
         root: "/Data/Harborfront_raw/"

@@ -86,7 +86,7 @@ if __name__ == "__main__":
 
         # Confuse vision (add Gaussian noise to conv2d layers)
         print("\n######## FORGETTING DATA #########")
-        model = confuse_vision(model, noise_scale = 0.08)
+        model = confuse_vision(model, noise_scale = cfg["unlearning"]["noise_scale"])
         model.summary()
         
         #Load datasets
@@ -150,7 +150,7 @@ if __name__ == "__main__":
         )
 
         #Complete Training Function
-        rep = model.fit(
+        rep_1 = model.fit(
             train_dataloader,
             epochs=cfg["training"]["epochs"],
             steps_per_epoch=int(len(train_dataloader)/cfg["training"]["batch_size"]),
@@ -158,3 +158,52 @@ if __name__ == "__main__":
             validation_data=valid_dataloader,
             validation_steps=int(len(valid_dataloader)/cfg["training"]["batch_size"]),
         )
+
+
+        if cfg["unlearning"]["noise_scale_2"] > 0:
+            print("Second round of noise")
+            # Second round of noise
+            model = confuse_vision(model, noise_scale = cfg["unlearning"]["noise_scale_2"])
+            model.summary()
+            
+            if cfg["unlearning"]["epochs_2"] > 0:
+                print("Second round of training")
+                # Redefine learning rate scheduler
+                lr_schedule = tf.keras.optimizers.schedules.ExponentialDecay(
+                        initial_learning_rate=cfg["training"]["lr"],
+                        decay_steps=cfg["training"]["lr_steps"],
+                        decay_rate=cfg["training"]["lr_decay"])
+                # Redefine optimizer
+                optimizer = tf.keras.optimizers.SGD(learning_rate=lr_schedule)
+                # Where to save the model 
+                network_callbacks = callbacks(
+                    save_path = f'assets/{cfg["model"]["name"]}/{cfg["model"]["exp"]}/second_round',
+                    depth=cfg['model']['size'],
+                    cfg=cfg
+                )
+                if args.wandb:
+                    wandb_callback = wandb.keras.WandbMetricsLogger(
+                        log_freq=cfg["wandb"]["log_freq"]
+                    )
+                    network_callbacks.append(wandb_callback)
+
+                # Recompile model
+                model.compile(
+                    loss=forget_human_loss,
+                    optimizer=optimizer,
+                    metrics=metrics,
+                )
+
+                # Retrain
+                rep_2 = model.fit(
+                    train_dataloader,
+                    epochs=cfg["unlearning"]["epochs_2"],
+                    initial_epoch=cfg["training"]["epochs"],
+                    steps_per_epoch=int(len(train_dataloader)/cfg["training"]["batch_size"]),
+                    callbacks=network_callbacks,
+                    validation_data=valid_dataloader,
+                    validation_steps=int(len(valid_dataloader)/cfg["training"]["batch_size"]),
+                )
+
+
+

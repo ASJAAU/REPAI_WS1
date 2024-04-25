@@ -44,8 +44,8 @@ def confuse_vision(model, noise_scale=0.1):
     
     # Reset last layer
     param = model.layers[-1].get_weights()
-    w = np.random.normal(0, 1, size = param[0].shape)
-    b = np.random.normal(0, 1, size = param[1].shape)
+    w = np.random.normal(0, 0.01, size = param[0].shape)
+    b = np.random.normal(0, 0.001, size = param[1].shape)
     model.layers[-1].set_weights([w, b])
     model.layers[-1].trainable = True
    
