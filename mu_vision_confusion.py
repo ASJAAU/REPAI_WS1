@@ -83,10 +83,15 @@ if __name__ == "__main__":
         inputsize = cfg["data"]["img_size"]
         dummy_pred = model(tf.convert_to_tensor(np.random.rand(cfg["training"]["batch_size"],inputsize[0],inputsize[1],inputsize[2])))
         print("Dummy prediction shape:", dummy_pred.shape)
+        print("Dummy prediction shape for a class:", dummy_pred[:,0].shape)
 
         # Confuse vision (add Gaussian noise to conv2d layers)
         print("\n######## FORGETTING DATA #########")
-        model = confuse_vision(model, noise_scale = cfg["unlearning"]["noise_scale"])
+        model = confuse_vision(model, 
+                noise_scale = cfg["unlearning"]["noise_scale"], 
+                trans = cfg["unlearning"]["transpose"], 
+                reinit_last = cfg["unlearning"]["reinit_last"],
+                train_dense = cfg["unlearning"]["train_dense"])
         model.summary()
         
         #Load datasets
@@ -150,7 +155,7 @@ if __name__ == "__main__":
         )
 
         #Complete Training Function
-        rep_1 = model.fit(
+        rep = model.fit(
             train_dataloader,
             epochs=cfg["training"]["epochs"],
             steps_per_epoch=int(len(train_dataloader)/cfg["training"]["batch_size"]),
@@ -163,7 +168,7 @@ if __name__ == "__main__":
         if cfg["unlearning"]["noise_scale_2"] > 0:
             print("Second round of noise")
             # Second round of noise
-            model = confuse_vision(model, noise_scale = cfg["unlearning"]["noise_scale_2"])
+            model = confuse_vision(model, noise_scale = cfg["unlearning"]["noise_scale_2"], trans = False, reinit_last = False)
             model.summary()
             
             if cfg["unlearning"]["epochs_2"] > 0:

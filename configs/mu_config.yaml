@@ -1,15 +1,18 @@
 training:
-        epochs: 10
-        lr: 0.1
+        epochs: 5
+        lr: 0.05
         lr_steps: 5000
-        lr_decay: 0.9
+        lr_decay: 0.88
         batch_size: 32
         validation_steps: 10000
 
 unlearning:
-        noise_scale: 15
-        noise_scale_2: 0.1
-        epochs_2: 1
+        noise_scale: 1
+        noise_scale_2: 0.01
+        epochs_2: 10
+        transpose: True
+        reinit_last: True  
+        train_dense: True
 
 model:
         size: 56
@@ -20,7 +23,7 @@ model:
                 - "vehicle"
         expose_featuremap: False
         name: "ResNet56_forget_human"
-        exp: "vc_b32_2rounds_e10_1_e15_0.1"
+        exp: "vc_b32_2rounds_e5_1_e5_0.01_trans_dense_target_ignore"
 
 data:
         root: "/Data/Harborfront_raw/"

@@ -1,11 +1,14 @@
 import tensorflow as tf
 import numpy as np
+import sys
 from tqdm import tqdm
 
-def confuse_vision(model, noise_scale=0.1):
+def confuse_vision(model, noise_scale, trans = True, reinit_last = True, train_dense = True):
     """ Add Gaussian noise to the conv2d layers of the model.
         - model: a tf model with loaded weights
         - noise_scale: scale of the std of the Gaussian noise
+        - trans: transpose kernel of cnn?
+        - reinit_last: reinitialize last layer? otherwise add noise
     """
     convs = [layer.get_weights() for layer in model.layers if layer.name[:6]=="conv2d"]
 
@@ -16,7 +19,8 @@ def confuse_vision(model, noise_scale=0.1):
         for j in range(kernel.shape[2]):
             for k in range(kernel.shape[3]):
                 # Transpose the kernel
-                kernel[:,:,j,k] = tf.transpose(kernel[:,:,j,k])
+                if trans:
+                    kernel[:,:,j,k] = tf.transpose(kernel[:,:,j,k])
                 # Compute noise scale for kernel
                 std_k = tf.keras.backend.get_value(tf.math.reduce_std(kernel[:,:,j,k])) * noise_scale
                 # Add Gaussian noise to kernel
@@ -30,7 +34,7 @@ def confuse_vision(model, noise_scale=0.1):
         bias = bias + np.random.normal(0, std_b, size=bias.shape)
         # Keep noised weights
         convs[i] = [kernel, bias]
-
+        
     # Update model
     j = 0
     for i, layer in enumerate(model.layers):
@@ -38,14 +42,23 @@ def confuse_vision(model, noise_scale=0.1):
             # Change conv2d layers for the noised-transposed conv2d layers
             layer.set_weights(convs[j])
             j = j + 1
+            layer.trainable = True
         else:
             # Freeze the layer
-            layer.trainable = False
+            layer.trainable = train_dense
     
-    # Reset last layer
+    # Last layer
     param = model.layers[-1].get_weights()
-    w = np.random.normal(0, 0.01, size = param[0].shape)
-    b = np.random.normal(0, 0.001, size = param[1].shape)
+    if reinit_last:
+        # Reset
+        w = np.random.normal(0, 0.001, size = param[0].shape)
+        b = np.random.normal(0, 0.001, size = param[1].shape)
+        # w = np.ones(param[0].shape)
+        # b = np.ones(param[1].shape)
+    else: 
+        # Add little noise
+        w = param[0] + np.random.normal(0, 0.001, size = param[0].shape)
+        b = param[1] + np.random.normal(0, 0.001, size = param[1].shape)
     model.layers[-1].set_weights([w, b])
     model.layers[-1].trainable = True
    
@@ -57,8 +70,6 @@ def forget_human_loss(y_true, y_pred):
     """ Custom loss function for forgetting human presence.
     Applies binary crossentropy to each class and ignores the human class.
     - y_true: true labels
-    print("Layers:")
-    arint("Layers:")
     - y_pred: predicted labels
     """
     n_classes = 4
@@ -73,5 +84,15 @@ def forget_human_loss(y_true, y_pred):
                     label_smoothing=0.0,
                     axis=-1,
                     )
+       # else: 
+       #     try:
+       #         aux = tf.zeros(tf.shape(y_true[:,i]))
+       #         loss += tf.keras.losses.binary_crossentropy(aux, y_pred[:,i],
+       #             from_logits=False,
+       #             label_smoothing=0.0,
+       #             axis=-1,
+       #             )
+       #     except:
+       #         tf.print("FAILED TO GET SHAPE", output_stream=sys.stdout)
     return loss
         
