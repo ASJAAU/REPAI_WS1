@@ -1,3 +1,4 @@
+
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
@@ -77,9 +78,10 @@ def generate_masks_conv_output(input_size, last_conv_output, s= 8):
     #grid = np.random.rand(N, s, s) < p1
     #grid = grid.astype('float32')
     #8, 0.5
+    #print(last_conv_output.shape)
     grid = np.rollaxis(last_conv_output, 2, 0)
     #grid = np.moveaxis(grid, 1, 3) 
-        
+    #print(grid.shape)    
     N = len(grid)
 
     masks = np.empty((*input_size, N))
@@ -95,6 +97,7 @@ def generate_masks_conv_output(input_size, last_conv_output, s= 8):
         """converting last convlayer to binary mask"""
         conv_out = conv_out > 0.1
         conv_out = conv_out.astype('float32')
+        #print(masks.shape)
         """ upsampling the binary mask using bi-linear interpolation (feature activaions masks) """
         final_resize = resize(conv_out, up_size, order=1, mode='reflect', anti_aliasing=False)
         masks[:, :, i] = final_resize            
@@ -131,13 +134,14 @@ def explain_SIDU(model, inp, N, p1, masks, input_size, cls_index=0):
     """ generating the feature image mask for the original image using dot product """
     masked = inp * masks
     """ predicting the score for oringal _input image """
-    pred_org = model.predict(inp)[cls_index]
+    pred_org, _ = model.predict(inp)
+    #pred_org = np.squeeze(pred_org)
     """ predicting the scores for all feature image masks """
     
     for i in tqdm(range(0, N, batch_size), desc='Explaining'):
-        preds.append(model.predict(masked[i:min(i+batch_size, N)])[cls_index])
+        preds.append(model.predict(np.squeeze(masked[i:min(i+batch_size, N)]))[0])
     preds = np.concatenate(preds)
-    
+
     weights, diff = sim_differences(pred_org, preds)
     interactions = uniqness_measure(preds)
     new_interactions = interactions.reshape(-1, 1)
