@@ -27,6 +27,7 @@ def load_annotations(sample_name, img_path, ann_path):
     boxes = []
     areas = []  
     ocls = []
+    centers = []
 
     
     #Load annotations
@@ -42,7 +43,9 @@ def load_annotations(sample_name, img_path, ann_path):
                 ocls.append(int(row[6]))
                 #Add bounding box
                 #boxes.append([int(row[2]), int(row[3]), int(row[4]), int(row[5])]) #Xtopleft, Ytopleft, Xbottomright, Ybottomright
-                boxes.append([int(row[2]), int(row[3]), abs(int(row[4])-int(row[2])), abs(int(row[5])-int(row[3]))]) #Xtopleft, Ytopleft, Xbottomright, Ybottomright
+                boxes.append([int(row[2]), int(row[3]), abs(int(row[4])-int(row[2])), abs(int(row[5])-int(row[3]))]) #X,Y,W,H
+                #Add boundingbox Centers
+                centers.append([int(row[2]), int(row[3])])
                 #Add areas
                 areas.append(abs(int(row[4])-int(row[2])) * abs(int(row[5])-int(row[3])))
 
@@ -60,6 +63,7 @@ def load_annotations(sample_name, img_path, ann_path):
         #"occlusions": ocls,
         "iscrowd"   : ocls, #iscrowd is used as an occlusion tag
         "areas"      : areas,
+        "centers"    : centers,
         "timestamp" : timestamp + datetime.timedelta(0, int(sample_name[-4:]))
         #sample_name example: '20200514_clip_0_1331_0001'
         #because framerate is 1fps we use framenumber as second
@@ -172,8 +176,8 @@ if __name__ == "__main__":
                         #"license": 0,
                         "file_name": os.path.join(args.img_folder, date, clip, "image_{}.jpg".format(frame_number)),
                         #"coco_url": "N/A",
-                        "height": 288,
-                        "width": 384,
+                        #"height": 288,
+                        #"width": 384,
                         "date_captured": annots["timestamp"].isoformat(),
                         #"flickr_url": "N/A",
                         #"id": frame_idx,
@@ -187,17 +191,20 @@ if __name__ == "__main__":
                     #Add object counters
                     for key in ANNO_CATEGORIES.keys():
                         img_entry[key] = 0
+                        img_entry[f"{key}_centers"] = []
                     #img_entry["background"] = 0
 
-                    #Count objects
+                    #Process annotations
                     if len(annots["labels"]) >= 1:
                         for i in range(len(annots["labels"])):
+                            #Count objects
                             img_entry[annots["labels"][i]] += 1
-                    #else:
-                        #img_entry["background"] += 1
-
+                            #List Centers
+                            img_entry[f'{annots["labels"][i]}_centers'].append(annots["centers"][i])
+                    
+                    #Append to dataset dict
                     samples.append(img_entry)
 
         #Turn into pandas dataframe
         dt = pd.DataFrame(samples)
-        dt.to_csv(f'./{split}_data.csv',";")
+        dt.to_csv(f'{args.output}/{split}_data.csv',";")
