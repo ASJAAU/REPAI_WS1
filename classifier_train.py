@@ -8,6 +8,7 @@ from utils.metrics import *
 import numpy as np
 import yaml
 import argparse
+from utils.loss import * 
 
 if __name__ == "__main__":
     #CLI
@@ -24,19 +25,31 @@ if __name__ == "__main__":
     #Load configs
     with open (args.config, 'r') as f:
         cfg = yaml.safe_load(f)
+        #If there is a base config
+        if os.path.isfile(cfg["base"]):
+            print(f"### LOADING BASE CONFIG PARAMETERS ({cfg['base']}) ####")
+            with open (cfg["base"], 'r') as g:
+                base = yaml.safe_load(g)
+                base.update(cfg)
+                cfg = base
+        else:
+            print(f"### NO CONFIG BASE DETECTED ({cfg['base']}) ####")
+            print("Loading config as is")
+            
+    #Setup experiment callbacks
+    network_callbacks = callbacks(
+        save_path=f'assets/{cfg["model"]["name"]}/{cfg["model"]["exp"]}',
+        depth=cfg["model"]["size"],
+        cfg=cfg
+    )
 
-    #IF WANDB is enabled
+    #Initialize WANDB
     if args.wandb:
         print("\n########## 'Weights and Biases' enabled ##########")
         import wandb
-        wandb.init(
-        # set the wandb project where this run will be logged
-        project="REPAI_WS01",
-
-        # track hyperparameters and run metadata
-        config=cfg
-    )
-        print("Note: Using logged in credentials:")   
+        wandb.init(project="REPAI_XAI",config=cfg)
+        wandb_callback = wandb.keras.WandbMetricsLogger(log_freq=cfg["wandb"]["log_freq"])
+        network_callbacks.append(wandb_callback)
 
     #This is only needed when limiting TF to one GPU
     gpus = tf.config.list_physical_devices('GPU')
@@ -50,8 +63,41 @@ if __name__ == "__main__":
             # Visible devices must be set before GPUs have been initialized
             print(e)    
 
+        print("\n########## LOADING DATA ##########")
+        train_dataset = HarborfrontClassificationDataset(
+            data_split=cfg["data"]["train"],
+            root=cfg["data"]["root"],
+            classes=cfg["model"]["classes"],
+            resize=tuple(cfg["data"]["im_size"]),
+            binary_cls=cfg["data"]["binary_cls"],
+            verbose=True, #Print status and overview
+            )
+
+        valid_dataset = HarborfrontClassificationDataset(
+            data_split=cfg["data"]["valid"],
+            root=cfg["data"]["root"],
+            classes=cfg["model"]["classes"],
+            resize=tuple(cfg["data"]["im_size"]),
+            binary_cls=cfg["data"]["binary_cls"],
+            verbose=True, #Print status and overview
+            )
+        
+        #Create target input size for rescaling
+        inputsize = cfg["data"]["im_size"]
+    
+        #Create dataloader (AS GENERATOR)
+        print("\nCreating training dataloader:")
+        train_dataloader = train_dataset.get_dataloader(
+            batchsize=cfg["training"]["batch_size"], 
+            shuffle_data=True)
+
+        print("\nCreating validation dataloader:")
+        valid_dataloader = valid_dataset.get_dataloader(
+            batchsize=cfg["training"]["batch_size"], 
+            shuffle_data=True)
+
+    #Define Model
     with tf.device(args.device):
-        #Define Model
         print("\n########## BUILDING MODEL ##########")
         print(f'Building model: ResNet{cfg["model"]["size"]}')
         network = build_resnet_model(
@@ -60,66 +106,6 @@ if __name__ == "__main__":
             num_classes=len(cfg["model"]["classes"]),
             expose_features=cfg["model"]["expose_featuremap"],
             name=cfg["model"]["name"]
-        )
-
-        #Where to save model
-        network_callbacks = callbacks(
-            save_path=f'assets/{cfg["model"]["name"]}/{cfg["model"]["exp"]}',
-            depth=cfg["model"]["size"],
-            cfg=cfg
-        )
-        
-        if args.wandb:
-            wandb_callback = wandb.keras.WandbMetricsLogger(
-                log_freq=cfg["wandb"]["log_freq"]
-            )
-            network_callbacks.append(wandb_callback)
-
-        #Dummy input
-        inputsize = cfg["data"]["im_size"]
-        dummy_pred = network(tf.convert_to_tensor(np.random.rand(cfg["training"]["batch_size"],inputsize[0],inputsize[1],inputsize[2])))
-
-        #Load datasets
-        print("\n########## LOADING DATA ##########")
-        train_dataset = HarborfrontClassificationDataset(
-            data_split=cfg["data"]["train"],
-            root=cfg["data"]["root"],
-            classes=cfg["model"]["classes"],
-            verbose=True, #Print status and overview
-            binary_cls=cfg["data"]["binary_cls"],
-            )
-
-        valid_dataset = HarborfrontClassificationDataset(
-            data_split=cfg["data"]["valid"],
-            root=cfg["data"]["root"],
-            classes=cfg["model"]["classes"],
-            verbose=True, #Print status and overview
-            binary_cls=cfg["data"]["binary_cls"],
-            )
-
-        #Create dataloader (AS GENERATOR)
-        print("\nCreating training dataloader:")
-        train_dataloader = train_dataset.get_data_generator(
-            resize=tuple([inputsize[0],inputsize[1]]),
-            augmentations=False,
-            shuffle_data=True,
-        )
-
-        print("\nCreating validation dataloader:")
-        valid_dataloader = valid_dataset.get_data_generator(
-            resize=tuple([inputsize[0],inputsize[1]]),
-            augmentations=False,
-            shuffle_data=False,
-        )
-
-        print("")
-
-        #Define loss
-        loss = tf.keras.losses.BinaryCrossentropy(
-            from_logits=False,
-            label_smoothing=0.0,
-            axis=-1,
-            reduction="sum_over_batch_size",
         )
 
         #Define learning-rate schedule
@@ -131,13 +117,42 @@ if __name__ == "__main__":
         #Define optimizer
         optimizer= tf.keras.optimizers.SGD(learning_rate=lr_schedule)
 
+        #Define loss
+        if cfg["data"]["binary_cls"] is True:
+            loss = BinaryCrossentropy(
+                from_logits=False,
+                label_smoothing=0.0,
+                axis=-1,
+                reduction="sum_over_batch_size",
+                )
+        else:
+            loss = Huber(
+                delta=2.0,
+                reduction="sum_over_batch_size",
+                name="huber_loss",
+            )
+
         #Compile proper accuracy metrics
         metrics = []
-        metrics.append(Binary_Accuracy(name="acc_total")) #Total accuracy of model (Mean of all classes)
+
+        #Setup binary classification metrics
+        if cfg["data"]["counts"] is False:
+            if cfg["data"]["binary_cls"] is True:
+                metrics.append(Binary_Accuracy(name="acc_total")) #Total accuracy of model (Mean of all classes)
+                #Add classwise accuracy metrics
+                for i, name in enumerate(cfg["model"]["classes"]):
+                    metrics.append(Binary_Accuracy(name=f"acc_{name}",element=i))
         
-        #Add classwise accuracy metrics
-        for i, name in enumerate(cfg["model"]["classes"]):
-            metrics.append(metrics.append(Binary_Accuracy(name=f"acc_{name}",element=i )))
+        #Setup Object counting metrics
+        elif cfg["data"]["counts"] is False:
+            #Track mean absolute error
+            metrics.append(Mean_Absolute_Error(name="MAE_total")) 
+            for i, name in enumerate(cfg["model"]["classes"]):
+                metrics.append(Mean_Absolute_Error(name=f"MAE_{name}", element=i))
+            #Track root mean squared
+            metrics.append(Root_Mean_Squared_Error(name="MAE_total")) 
+            for i, name in enumerate(cfg["model"]["classes"]):
+                metrics.append(Root_Mean_Squared_Error(name=f"MAE_{name}", element=i))
 
         #Compile model
         network.compile(
@@ -145,6 +160,7 @@ if __name__ == "__main__":
             optimizer=optimizer,
             metrics=metrics,
         )
+        #dummy_pred = network(tf.convert_to_tensor(np.random.rand(cfg["training"]["batch_size"],inputsize[0],inputsize[1],inputsize[2])))
 
         #Complete Training Function
         rep = network.fit(
