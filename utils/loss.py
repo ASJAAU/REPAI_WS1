@@ -1,31 +1,290 @@
-from keras.losses.loss import Loss
-from keras.saving import serialization_lib
-from keras.losses.loss import squeeze_or_expand_to_same_rank
+import abc
+import functools
+
 from keras import backend
-from keras import ops
+from keras.utils import losses_utils
+
+import tensorflow.compat.v2 as tf
+
+from keras import backend
+from keras.saving.experimental import saving_lib
+from keras.utils import losses_utils
+from keras.utils import tf_utils
+
+class Loss:
+    """Loss base class.
+
+    To be implemented by subclasses:
+    * `call()`: Contains the logic for loss calculation using `y_true`,
+      `y_pred`.
+
+    Example subclass implementation:
+
+    ```python
+    class MeanSquaredError(Loss):
+
+      def call(self, y_true, y_pred):
+        return tf.reduce_mean(tf.math.square(y_pred - y_true), axis=-1)
+    ```
+
+    When used with `tf.distribute.Strategy`, outside of built-in training loops
+    such as `tf.keras` `compile` and `fit`, please use 'SUM' or 'NONE' reduction
+    types, and reduce losses explicitly in your training loop. Using 'AUTO' or
+    'SUM_OVER_BATCH_SIZE' will raise an error.
+
+    Please see this custom training [tutorial](
+      https://www.tensorflow.org/tutorials/distribute/custom_training) for more
+    details on this.
+
+    You can implement 'SUM_OVER_BATCH_SIZE' using global batch size like:
+
+    ```python
+    with strategy.scope():
+      loss_obj = tf.keras.losses.CategoricalCrossentropy(
+          reduction=tf.keras.losses.Reduction.NONE)
+      ....
+      loss = (tf.reduce_sum(loss_obj(labels, predictions)) *
+              (1. / global_batch_size))
+    ```
+    """
+
+    def __init__(self, reduction=losses_utils.ReductionV2.AUTO, name=None):
+        """Initializes `Loss` class.
+
+        Args:
+          reduction: Type of `tf.keras.losses.Reduction` to apply to
+            loss. Default value is `AUTO`. `AUTO` indicates that the reduction
+            option will be determined by the usage context. For almost all cases
+            this defaults to `SUM_OVER_BATCH_SIZE`. When used with
+            `tf.distribute.Strategy`, outside of built-in training loops such as
+            `tf.keras` `compile` and `fit`, using `AUTO` or
+            `SUM_OVER_BATCH_SIZE`
+            will raise an error. Please see this custom training [tutorial](
+              https://www.tensorflow.org/tutorials/distribute/custom_training)
+              for more details.
+          name: Optional name for the instance.
+        """
+        losses_utils.ReductionV2.validate(reduction)
+        self.reduction = reduction
+        self.name = name
+        # SUM_OVER_BATCH is only allowed in losses managed by `fit` or
+        # CannedEstimators.
+        self._allow_sum_over_batch_size = False
+        self._set_name_scope()
+
+    def _set_name_scope(self):
+        """Creates a valid `name_scope` name."""
+        if self.name is None:
+            self._name_scope = self.__class__.__name__.strip("_")
+        elif self.name == "<lambda>":
+            self._name_scope = "lambda"
+        else:
+            # E.g. '_my_loss' => 'my_loss'
+            self._name_scope = self.name.strip("_")
+
+    def __call__(self, y_true, y_pred, sample_weight=None):
+        """Invokes the `Loss` instance.
+
+        Args:
+          y_true: Ground truth values. shape = `[batch_size, d0, .. dN]`, except
+            sparse loss functions such as sparse categorical crossentropy where
+            shape = `[batch_size, d0, .. dN-1]`
+          y_pred: The predicted values. shape = `[batch_size, d0, .. dN]`
+          sample_weight: Optional `sample_weight` acts as a coefficient for the
+            loss. If a scalar is provided, then the loss is simply scaled by the
+            given value. If `sample_weight` is a tensor of size `[batch_size]`,
+            then the total loss for each sample of the batch is rescaled by the
+            corresponding element in the `sample_weight` vector. If the shape of
+            `sample_weight` is `[batch_size, d0, .. dN-1]` (or can be
+            broadcasted to this shape), then each loss element of `y_pred` is
+            scaled by the corresponding value of `sample_weight`. (Note
+            on`dN-1`: all loss functions reduce by 1 dimension, usually
+            axis=-1.)
+
+        Returns:
+          Weighted loss float `Tensor`. If `reduction` is `NONE`, this has
+            shape `[batch_size, d0, .. dN-1]`; otherwise, it is scalar. (Note
+            `dN-1` because all loss functions reduce by 1 dimension, usually
+            axis=-1.)
+
+        Raises:
+          ValueError: If the shape of `sample_weight` is invalid.
+        """
+        # If we are wrapping a lambda function strip '<>' from the name as it is
+        # not accepted in scope name.
+        graph_ctx = tf_utils.graph_context_for_symbolic_tensors(
+            y_true, y_pred, sample_weight
+        )
+        with backend.name_scope(self._name_scope), graph_ctx:
+            if tf.executing_eagerly():
+                call_fn = self.call
+            else:
+                call_fn = tf.__internal__.autograph.tf_convert(
+                    self.call, tf.__internal__.autograph.control_status_ctx()
+                )
+
+            losses = call_fn(y_true, y_pred)
+
+            in_mask = losses_utils.get_mask(y_pred)
+            out_mask = losses_utils.get_mask(losses)
+
+            if in_mask is not None and out_mask is not None:
+                mask = in_mask & out_mask
+            elif in_mask is not None:
+                mask = in_mask
+            elif out_mask is not None:
+                mask = out_mask
+            else:
+                mask = None
+
+            reduction = self._get_reduction()
+            sample_weight = losses_utils.apply_valid_mask(
+                losses, sample_weight, mask, reduction
+            )
+            return losses_utils.compute_weighted_loss(
+                losses, sample_weight, reduction=reduction
+            )
+
+    @classmethod
+    def from_config(cls, config):
+        """Instantiates a `Loss` from its config (output of `get_config()`).
+
+        Args:
+            config: Output of `get_config()`.
+
+        Returns:
+            A `Loss` instance.
+        """
+        return cls(**config)
+
+    def get_config(self):
+        """Returns the config dictionary for a `Loss` instance."""
+        return {"reduction": self.reduction, "name": self.name}
+
+    @abc.abstractmethod
+    def call(self, y_true, y_pred):
+        """Invokes the `Loss` instance.
+
+        Args:
+          y_true: Ground truth values. shape = `[batch_size, d0, .. dN]`, except
+            sparse loss functions such as sparse categorical crossentropy where
+            shape = `[batch_size, d0, .. dN-1]`
+          y_pred: The predicted values. shape = `[batch_size, d0, .. dN]`
+
+        Returns:
+          Loss values with the shape `[batch_size, d0, .. dN-1]`.
+        """
+        raise NotImplementedError("Must be implemented in subclasses.")
+
+    def _get_reduction(self):
+        """Handles `AUTO` reduction cases and returns the reduction value."""
+        if (
+            not self._allow_sum_over_batch_size
+            and tf.distribute.has_strategy()
+            and (
+                self.reduction == losses_utils.ReductionV2.AUTO
+                or self.reduction
+                == losses_utils.ReductionV2.SUM_OVER_BATCH_SIZE
+            )
+        ):
+            raise ValueError(
+                "Please use `tf.keras.losses.Reduction.SUM` or "
+                "`tf.keras.losses.Reduction.NONE` for loss reduction when "
+                "losses are used with `tf.distribute.Strategy` outside "
+                "of the built-in training loops. You can implement "
+                "`tf.keras.losses.Reduction.SUM_OVER_BATCH_SIZE` using "
+                "global batch size like:\n```\nwith strategy.scope():\n"
+                "    loss_obj = tf.keras.losses.CategoricalCrossentropy("
+                "reduction=tf.keras.losses.Reduction.NONE)\n....\n"
+                "    loss = tf.reduce_sum(loss_obj(labels, predictions)) * "
+                "(1. / global_batch_size)\n```\nPlease see "
+                "https://www.tensorflow.org/tutorials"
+                "/distribute/custom_training"
+                " for more details."
+            )
+
+        if self.reduction == losses_utils.ReductionV2.AUTO:
+            return losses_utils.ReductionV2.SUM_OVER_BATCH_SIZE
+        return self.reduction
+
 
 class LossFunctionWrapper(Loss):
+    """Wraps a loss function in the `Loss` class."""
+
     def __init__(
-        self, fn, reduction="sum_over_batch_size", name=None, **kwargs
+        self, fn, reduction=losses_utils.ReductionV2.AUTO, name=None, **kwargs
     ):
+        """Initializes `LossFunctionWrapper` class.
+
+        Args:
+          fn: The loss function to wrap, with signature `fn(y_true, y_pred,
+            **kwargs)`.
+          reduction: Type of `tf.keras.losses.Reduction` to apply to
+            loss. Default value is `AUTO`. `AUTO` indicates that the reduction
+            option will be determined by the usage context. For almost all cases
+            this defaults to `SUM_OVER_BATCH_SIZE`. When used with
+            `tf.distribute.Strategy`, outside of built-in training loops such as
+            `tf.keras` `compile` and `fit`, using `AUTO` or
+            `SUM_OVER_BATCH_SIZE` will raise an error. Please see this custom
+            training [tutorial](
+            https://www.tensorflow.org/tutorials/distribute/custom_training) for
+            more details.
+          name: Optional name for the instance.
+          **kwargs: The keyword arguments that are passed on to `fn`.
+        """
         super().__init__(reduction=reduction, name=name)
         self.fn = fn
         self._fn_kwargs = kwargs
 
     def call(self, y_true, y_pred):
-        y_true, y_pred = squeeze_or_expand_to_same_rank(y_true, y_pred)
-        return self.fn(y_true, y_pred, **self._fn_kwargs)
+        """Invokes the `LossFunctionWrapper` instance.
+
+        Args:
+          y_true: Ground truth values.
+          y_pred: The predicted values.
+
+        Returns:
+          Loss values per sample.
+        """
+        if tf.is_tensor(y_pred) and tf.is_tensor(y_true):
+            y_pred, y_true = losses_utils.squeeze_or_expand_dimensions(
+                y_pred, y_true
+            )
+
+        ag_fn = tf.__internal__.autograph.tf_convert(
+            self.fn, tf.__internal__.autograph.control_status_ctx()
+        )
+        return ag_fn(y_true, y_pred, **self._fn_kwargs)
 
     def get_config(self):
+        config = {}
+        for k, v in self._fn_kwargs.items():
+            config[k] = (
+                backend.eval(v) if tf_utils.is_tensor_or_variable(v) else v
+            )
+
+        if getattr(saving_lib._SAVING_V3_ENABLED, "value", False):
+            from keras.utils import get_registered_name
+
+            config["fn"] = get_registered_name(self.fn)
+
         base_config = super().get_config()
-        config = {"fn": serialization_lib.serialize_keras_object(self.fn)}
-        config.update(serialization_lib.serialize_keras_object(self._fn_kwargs))
-        return {**base_config, **config}
+        return dict(list(base_config.items()) + list(config.items()))
 
     @classmethod
     def from_config(cls, config):
-        if "fn" in config:
-            config = serialization_lib.deserialize_keras_object(config)
+        """Instantiates a `Loss` from its config (output of `get_config()`).
+
+        Args:
+            config: Output of `get_config()`.
+
+        Returns:
+            A `keras.losses.Loss` instance.
+        """
+        if getattr(saving_lib._SAVING_V3_ENABLED, "value", False):
+            fn_name = config.pop("fn", None)
+            if fn_name and cls is LossFunctionWrapper:
+                config["fn"] = get(fn_name)
         return cls(**config)
 
 #Binary CE
@@ -178,51 +437,38 @@ class BinaryCrossentropy(LossFunctionWrapper):
             "axis": self.axis,
         }
 
-#HUBER
+#HUBERkeras.losse
 def huber(y_true, y_pred, delta=1.0):
     """Computes Huber loss value.
 
-    Formula:
-    ```python
-    for x in error:
-        if abs(x) <= delta:
-            loss.append(0.5 * x^2)
-        elif abs(x) > delta:
-            loss.append(delta * abs(x) - 0.5 * delta^2)
+    For each value x in `error = y_true - y_pred`:
 
-    loss = mean(loss, axis=-1)
     ```
-    See: [Huber loss](https://en.wikipedia.org/wiki/Huber_loss).
-
-    Example:
-
-    >>> y_true = [[0, 1], [0, 0]]
-    >>> y_pred = [[0.6, 0.4], [0.4, 0.6]]
-    >>> loss = keras.losses.huber(y_true, y_pred)
-    0.155
-
+    loss = 0.5 * x^2                  if |x| <= d
+    loss = d * |x| - 0.5 * d^2        if |x| > d
+    ```
+    where d is `delta`. See: https://en.wikipedia.org/wiki/Huber_loss
 
     Args:
-        y_true: tensor of true targets.
-        y_pred: tensor of predicted targets.
-        delta: A float, the point where the Huber loss function changes from a
-            quadratic to linear. Defaults to `1.0`.
+      y_true: tensor of true targets.
+      y_pred: tensor of predicted targets.
+      delta: A float, the point where the Huber loss function changes from a
+        quadratic to linear.
 
     Returns:
-        Tensor with one scalar loss entry per sample.
+      Tensor with one scalar loss entry per sample.
     """
-    y_pred = ops.convert_to_tensor(y_pred)
-    y_true = ops.convert_to_tensor(y_true, dtype=y_pred.dtype)
-    y_true, y_pred = squeeze_or_expand_to_same_rank(y_true, y_pred)
-    delta = ops.convert_to_tensor(delta)
-    error = ops.subtract(y_pred, y_true)
-    abs_error = ops.abs(error)
-    half = ops.convert_to_tensor(0.5, dtype=abs_error.dtype)
-    return ops.mean(
-        ops.where(
+    y_pred = tensorflow.compat.v2.cast(y_pred, dtype=backend.floatx())
+    y_true = tensorflow.compat.v2.cast(y_true, dtype=backend.floatx())
+    delta = tensorflow.compat.v2.cast(delta, dtype=backend.floatx())
+    error = tensorflow.compat.v2.subtract(y_pred, y_true)
+    abs_error = tensorflow.compat.v2.abs(error)
+    half = tensorflow.compat.v2.convert_to_tensor(0.5, dtype=abs_error.dtype)
+    return backend.mean(
+        tensorflow.compat.v2.where(
             abs_error <= delta,
-            half * ops.square(error),
-            delta * abs_error - half * ops.square(delta),
+            half * tensorflow.compat.v2.square(error),
+            delta * abs_error - half * tensorflow.compat.v2.square(delta),
         ),
         axis=-1,
     )
@@ -230,66 +476,67 @@ def huber(y_true, y_pred, delta=1.0):
 class Huber(LossFunctionWrapper):
     """Computes the Huber loss between `y_true` & `y_pred`.
 
-    Formula:
+    For each value x in `error = y_true - y_pred`:
+
+    ```
+    loss = 0.5 * x^2                  if |x| <= d
+    loss = 0.5 * d^2 + d * (|x| - d)  if |x| > d
+    ```
+    where d is `delta`. See: https://en.wikipedia.org/wiki/Huber_loss
+
+    Standalone usage:
+
+    >>> y_true = [[0, 1], [0, 0]]
+    >>> y_pred = [[0.6, 0.4], [0.4, 0.6]]
+    >>> # Using 'auto'/'sum_over_batch_size' reduction type.
+    >>> h = tf.keras.losses.Huber()
+    >>> h(y_true, y_pred).numpy()
+    0.155
+
+    >>> # Calling with 'sample_weight'.
+    >>> h(y_true, y_pred, sample_weight=[1, 0]).numpy()
+    0.09
+
+    >>> # Using 'sum' reduction type.
+    >>> h = tf.keras.losses.Huber(
+    ...     reduction=tf.keras.losses.Reduction.SUM)
+    >>> h(y_true, y_pred).numpy()
+    0.31
+
+    >>> # Using 'none' reduction type.
+    >>> h = tf.keras.losses.Huber(
+    ...     reduction=tf.keras.losses.Reduction.NONE)
+    >>> h(y_true, y_pred).numpy()
+    array([0.18, 0.13], dtype=float32)
+
+    Usage with the `compile()` API:
 
     ```python
-    for x in error:
-        if abs(x) <= delta:
-            loss.append(0.5 * x^2)
-        elif abs(x) > delta:
-            loss.append(delta * abs(x) - 0.5 * delta^2)
-
-    loss = mean(loss, axis=-1)
+    model.compile(optimizer='sgd', loss=tf.keras.losses.Huber())
     ```
-    See: [Huber loss](https://en.wikipedia.org/wiki/Huber_loss).
-
-    Args:
-        delta: A float, the point where the Huber loss function changes from a
-            quadratic to linear.
-        reduction: Type of reduction to apply to loss. Options are `"sum"`,
-            `"sum_over_batch_size"` or `None`. Defaults to
-            `"sum_over_batch_size"`.
-        name: Optional name for the instance.
     """
 
     def __init__(
         self,
-        delta=1.0,
-        reduction="sum_over_batch_size",
+        delta=3.0,
+        reduction=losses_utils.ReductionV2.AUTO,
         name="huber_loss",
     ):
+        """Initializes `Huber` instance.
+
+        Args:
+          delta: A float, the point where the Huber loss function changes from a
+            quadratic to linear.
+          reduction: Type of `tf.keras.losses.Reduction` to apply to
+            loss. Default value is `AUTO`. `AUTO` indicates that the reduction
+            option will be determined by the usage context. For almost all cases
+            this defaults to `SUM_OVER_BATCH_SIZE`. When used with
+            `tf.distribute.Strategy`, outside of built-in training loops such as
+            `tf.keras` `compile` and `fit`, using `AUTO` or
+            `SUM_OVER_BATCH_SIZE` will raise an error. Please see this custom
+            training [tutorial](
+            https://www.tensorflow.org/tutorials/distribute/custom_training) for
+            more details.
+          name: Optional name for the instance. Defaults to 'huber_loss'.
+        """
         super().__init__(huber, name=name, reduction=reduction, delta=delta)
-
-    def get_config(self):
-        return Loss.get_config(self)
-
-#MSE
-def mean_squared_error(y_true, y_pred):
-    y_pred = ops.convert_to_tensor(y_pred)
-    y_true = ops.convert_to_tensor(y_true, dtype=y_pred.dtype)
-    y_true, y_pred = squeeze_or_expand_to_same_rank(y_true, y_pred)
-    return ops.mean(ops.square(y_true - y_pred), axis=-1)
-
-class MeanSquaredError(LossFunctionWrapper):
-    """Computes the mean of squares of errors between labels and predictions.
-
-    Formula:
-
-    ```python
-    loss = mean(square(y_true - y_pred))
-    ```
-
-    Args:
-        reduction: Type of reduction to apply to the loss. In almost all cases
-            this should be `"sum_over_batch_size"`.
-            Supported options are `"sum"`, `"sum_over_batch_size"` or `None`.
-        name: Optional name for the loss instance.
-    """
-
-    def __init__(
-        self, reduction="sum_over_batch_size", name="mean_squared_error"
-    ):
-        super().__init__(mean_squared_error, reduction=reduction, name=name)
-
-    def get_config(self):
-        return Loss.get_config(self)
