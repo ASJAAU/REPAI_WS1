@@ -8,6 +8,7 @@ from utils.metrics import Binary_Accuracy, binary_accuracy
 from utils.visualize import visualize_prediction
 import numpy as np
 import pandas as pd
+import tqdm
 
 __EXT__ = (".jpg", ".png", ".bmp")
 
@@ -75,10 +76,12 @@ for img, label in samples:
 
     #extract predictions and featuremap
     pred_vec, feature_activation_maps = model.predict(in_tensor)
-    
+    pred_vec=np.squeeze(pred_vec)
+    feature_activation_maps=np.squeeze(feature_activation_maps)
     #accumulate XAIs
     heatmaps = []
     for i, pred in enumerate(pred_vec):
+        #print(feature_activation_maps.shape)
         #Generate Convolutional masks
         masks, grid, cell_size, up_size = generate_masks_conv_output((im_h,im_w), feature_activation_maps, s= 8)
     
@@ -92,11 +95,13 @@ for img, label in samples:
         masked = in_tensor * data
         N = len(new_masks)
 
-        # Visual explnations for the object class  
-        sal, weights, new_interactions, diff_interactions, pred_org = explain_SIDU(model, in_tensor, N, 0.5, data, (288,384))
-        heatmaps.append(sal)
+        sal, weights, new_interactions, diff_interactions, pred_org = explain_SIDU(model, in_tensor, N, 0.5, data, (288,384), cls_index=i)
+        heatmaps.append(sal[0])
+
+    print(f'HEATMAP COUNT: {len(heatmaps)}')
+
     #show explination
-    figure = visualize_prediction(im, pred_vec, groundtruth=label, heatmaps=heatmaps, classes=args.classes)
+    figure = visualize_prediction(vis, pred_vec, groundtruth=label, heatmaps=[heatmaps[0]], classes=args.classes)
     
     #Save?
     if args.save is not None:
