@@ -20,7 +20,7 @@ model:
 
 data:
   root: "/Data/Harborfront_raw/"
-  train: "data/Train_smallest.csv"
+  train: "data/Train_data.csv"
   valid: "data/Valid_data.csv"
   test: "data/Test_data.csv"
   im_size: 
