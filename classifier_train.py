@@ -48,7 +48,7 @@ if __name__ == "__main__":
     if args.wandb:
         print("\n########## 'Weights and Biases' enabled ##########")
         import wandb
-        wandb.init(project="REPAI_XAI",config=cfg)
+        wandb.init(project="REPAI_XAIE_WORKSHOP",config=cfg)
         wandb_callback = wandb.keras.WandbMetricsLogger(log_freq=cfg["wandb"]["log_freq"])
         network_callbacks.append(wandb_callback)
 
