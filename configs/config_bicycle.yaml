@@ -1,29 +1,7 @@
-training:
-  epochs: 20
-  lr: 0.1
-  lr_steps: 5000
-  lr_decay: 0.9
-  batch_size: 32
-  validation_steps: 10000
+base: config.yaml
 
 model:
-  size: 56
   classes:
   - "bicycle"
-  expose_featuremap: False
-  name: "ResNet56_Bicycle"
-  exp: "baseline02"
-
-data:
-  root: "/Data/Harborfront_raw/"
-  train: "data/Train_data.csv"
-  valid: "data/Valid_data.csv"
-  test: "data/Test_data.csv"
-  im_size: 
-  - 288
-  - 384
-  - 3
-  binary_cls: True
-
-wandb:
-  log_freq: 100 #Number of batches
+  name: "ResNet56_counter_bicycle_class"
+  exp: "baseline01"
