@@ -9,6 +9,7 @@ import numpy as np
 import yaml
 import argparse
 from utils.loss import * 
+import time
 
 if __name__ == "__main__":
     #CLI
@@ -51,7 +52,11 @@ if __name__ == "__main__":
         wandb_callback = wandb.keras.WandbMetricsLogger(log_freq=cfg["wandb"]["log_freq"])
         network_callbacks.append(wandb_callback)
 
+    #Now prevents
+    tf.config.run_functions_eagerly(False)
+    
     #This is only needed when limiting TF to one GPU
+    print("\n########## 'Available Hardware ##########")
     gpus = tf.config.list_physical_devices('GPU')
     if gpus:
         # Restrict TensorFlow to only use the first GPU
@@ -61,40 +66,40 @@ if __name__ == "__main__":
             print(len(gpus), "Physical GPUs,", len(logical_gpus), "Logical GPU")
         except RuntimeError as e:
             # Visible devices must be set before GPUs have been initialized
-            print(e)    
+            print(e)
 
-        print("\n########## LOADING DATA ##########")
-        train_dataset = HarborfrontClassificationDataset(
-            data_split=cfg["data"]["train"],
-            root=cfg["data"]["root"],
-            classes=cfg["model"]["classes"],
-            resize=tuple(cfg["data"]["im_size"]),
-            binary_cls=cfg["data"]["binary_cls"],
-            verbose=True, #Print status and overview
-            )
+    print("\n########## LOADING DATA ##########")
+    train_dataset = HarborfrontClassificationDataset(
+        data_split=cfg["data"]["train"],
+        root=cfg["data"]["root"],
+        classes=cfg["model"]["classes"],
+        img_shape=tuple(cfg["data"]["im_size"]),
+        binary_cls=cfg["data"]["binary_cls"],
+        verbose=True, #Print status and overview
+        )
 
-        valid_dataset = HarborfrontClassificationDataset(
-            data_split=cfg["data"]["valid"],
-            root=cfg["data"]["root"],
-            classes=cfg["model"]["classes"],
-            resize=tuple(cfg["data"]["im_size"]),
-            binary_cls=cfg["data"]["binary_cls"],
-            verbose=True, #Print status and overview
-            )
-        
-        #Create target input size for rescaling
-        inputsize = cfg["data"]["im_size"]
+    valid_dataset = HarborfrontClassificationDataset(
+        data_split=cfg["data"]["valid"],
+        root=cfg["data"]["root"],
+        classes=cfg["model"]["classes"],
+        img_shape=tuple(cfg["data"]["im_size"]),
+        binary_cls=cfg["data"]["binary_cls"],
+        verbose=True, #Print status and overview
+        )
     
-        #Create dataloader (AS GENERATOR)
-        print("\nCreating training dataloader:")
-        train_dataloader = train_dataset.get_dataloader(
-            batchsize=cfg["training"]["batch_size"], 
-            shuffle_data=True)
+    #Create target input size for rescaling
+    inputsize = cfg["data"]["im_size"]
 
-        print("\nCreating validation dataloader:")
-        valid_dataloader = valid_dataset.get_dataloader(
-            batchsize=cfg["training"]["batch_size"], 
-            shuffle_data=True)
+    #Create dataloader (AS GENERATOR)
+    print("\nCreating training dataloader:")
+    train_dataloader = train_dataset.get_dataloader(
+        batchsize=cfg["training"]["batch_size"], 
+        shuffle_data=True)
+
+    print("\nCreating validation dataloader:")
+    valid_dataloader = valid_dataset.get_dataloader(
+        batchsize=cfg["training"]["batch_size"], 
+        shuffle_data=True)
 
     #Define Model
     with tf.device(args.device):
@@ -107,7 +112,6 @@ if __name__ == "__main__":
             expose_features=cfg["model"]["expose_featuremap"],
             name=cfg["model"]["name"]
         )
-
         #Define learning-rate schedule
         lr_schedule = tf.keras.optimizers.schedules.ExponentialDecay(
             initial_learning_rate=cfg["training"]["lr"],
@@ -136,23 +140,22 @@ if __name__ == "__main__":
         metrics = []
 
         #Setup binary classification metrics
-        if cfg["data"]["counts"] is False:
-            if cfg["data"]["binary_cls"] is True:
-                metrics.append(Binary_Accuracy(name="acc_total")) #Total accuracy of model (Mean of all classes)
-                #Add classwise accuracy metrics
-                for i, name in enumerate(cfg["model"]["classes"]):
-                    metrics.append(Binary_Accuracy(name=f"acc_{name}",element=i))
-        
+        if cfg["data"]["binary_cls"] is True:
+            metrics.append(Binary_Accuracy(name="acc_total")) #Total accuracy of model (Mean of all classes)
+            #Add classwise accuracy metrics
+            for i, name in enumerate(cfg["model"]["classes"]):
+                metrics.append(Binary_Accuracy(name=f"acc_{name}",element=i))
+    
         #Setup Object counting metrics
-        elif cfg["data"]["counts"] is False:
+        else:
             #Track mean absolute error
             metrics.append(Mean_Absolute_Error(name="MAE_total")) 
             for i, name in enumerate(cfg["model"]["classes"]):
                 metrics.append(Mean_Absolute_Error(name=f"MAE_{name}", element=i))
             #Track root mean squared
-            metrics.append(Root_Mean_Squared_Error(name="MAE_total")) 
+            metrics.append(Root_Mean_Squared_Error(name="RMSE_total")) 
             for i, name in enumerate(cfg["model"]["classes"]):
-                metrics.append(Root_Mean_Squared_Error(name=f"MAE_{name}", element=i))
+                metrics.append(Root_Mean_Squared_Error(name=f"RMSE_{name}", element=i))
 
         #Compile model
         network.compile(
