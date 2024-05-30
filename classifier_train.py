@@ -150,29 +150,22 @@ if __name__ == "__main__":
                 metrics.append(Root_Mean_Squared_Error(name=f"RMSE_{name}", element=i))
 
         print("\n########## SETTING UP CALLBACKS AND LOGGING ##########")
+        #Set local filepath for storing logs and outputs
+        local_save_path = f'{args.output}/{cfg["model"]["name"]}/{cfg["model"]["exp"]}_{datetime.now().strftime("%d-%m-%Y:%H")}'
+
         #Setup experiment callbacks
         print(f"Saving weights and logs at {args.output}/{cfg['model']['name']}/{cfg['model']['exp']}")
         network_callbacks = callbacks(
-            save_path=f'{args.output}/{cfg["model"]["name"]}/{cfg["model"]["exp"]}',
+            save_path=local_save_path,
             depth=cfg["model"]["size"],
             cfg=cfg,
             metric=f"val_{metrics[0]}",
         )
+        print(f"Saving copy of config at: {local_save_path}/config.yaml")
+        with open(f'{local_save_path}/config.yaml', 'w') as f:
+            yaml.dump(cfg, f)
         print(f"NOTE: ranking model performance with {metrics[0]} (validation set)")
         print(f"the model with the best {metrics[0]} will be saved")
-
-        if cfg["wandb"]["enabled"]:
-            #Initialize WANDB
-            print("'Weights and Biases' enabled")
-            import wandb
-            wandb.init(
-                project="REPAI_XAIE_WORKSHOP",
-                config=cfg,
-                tags=cfg["wandb"]["tags"]
-                )
-            
-            #add Metrics logging callback
-            network_callbacks.append(wandb.keras.WandbMetricsLogger(log_freq=cfg["wandb"]["log_freq"],))
 
         print("\n########## COMPILING NETWORK AND TESTING DUMMY DATA ##########")
         #Compile model
@@ -181,19 +174,19 @@ if __name__ == "__main__":
             optimizer=optimizer,
             metrics=metrics,
         )
-
+        
         # Test forward pass
         dummy_input = np.random.rand(cfg["training"]["batch_size"],inputsize[0],inputsize[1],inputsize[2])
         print(f"Dummy input tensor of {dummy_input.shape}")
         dummy_pred = network(tf.convert_to_tensor(dummy_input))
-        print("Network primed")
+        print("Network primed and ready to train")
         
         print("\n########## TRAINING STARTING ##########")
         #Complete Training Function
         rep = network.fit(
             train_dataloader,
             epochs=cfg["training"]["epochs"],
-            #steps_per_epoch=int(len(train_dataloader)/cfg["training"]["batch_size"]),
+            steps_per_epoch=int(len(train_dataloader)/cfg["training"]["batch_size"]),
             callbacks=network_callbacks,
             validation_data=valid_dataloader,
             validation_steps=int(len(valid_dataloader)/cfg["training"]["batch_size"]),

@@ -1,51 +1,60 @@
-import math
 from typing import *
 from typing import List
 from tensorflow.keras.callbacks import ModelCheckpoint, TerminateOnNaN, CSVLogger
 from datetime import datetime
 import os
-import yaml
 from utils.metrics import *
-
-
-now = datetime.now().strftime("%d-%m-%Y:%H")
 
 def existsfolder(path):
     if not os.path.exists(path):
         os.makedirs(path)
 
-def callbacks(save_path: str, depth: int, cfg: dict, metric: str) -> List:
-    """Keras callbacks which include ModelCheckpoint, CSVLogger, TensorBoard, LearningRateScheduler, TerminateOnNaN
-    
-    Parameters
-    ----------
-    save_path: str
-        local directory to save model weights
-    depth : int
-        Depth of ResNet model
-
-    Returns
-    -------
-    List
-        List all callbacks
-    """
+def callbacks(save_path: str, cfg: dict, metric: str) -> List:
+    #Check pathing
     existsfolder(save_path)
-
     existsfolder(f"{save_path}/" "weights/")
 
-    model_checkpoint = ModelCheckpoint(
-        filepath=f"{save_path}/" "weights/" + "epoch:{epoch:02d}-{metric:.2f}.hdf5",
-        save_best_only=True,
-        save_weights_only=False,
-        verbose=1)
+    callbacks_list = []
 
-    csv_logger = CSVLogger(filename=f"{save_path}/log-{now}.csv", append=True)
+    #Save models 
+    callbacks_list.append(
+        ModelCheckpoint(
+            filepath=f"{save_path}/" "weights/" + "epoch:{epoch:02d}-"+f"{metric:.2f}.hdf5",
+            save_best_only=True,
+            save_weights_only=False,
+            verbose=1
+            )
+    )
 
-    terminate_on_nan = TerminateOnNaN()
+    #Log results to CSV
+    callbacks_list.append(
+        CSVLogger(
+            filename=f"{save_path}/log.csv",
+            append=True
+            )
+    )
 
-    print(f"Saving copy of config at: {save_path}/{now}-config.yaml")
-    with open(f'{save_path}/{now}-config.yaml', 'w') as f:
-        yaml.dump(cfg, f)
+    #Terminate when producing NANs
+    callbacks_list.append(
+        TerminateOnNaN()
+    )
 
-    callbacks_list = [csv_logger, model_checkpoint, terminate_on_nan]
+    #Weights and Biases
+    if cfg["wandb"]["enabled"]:
+        print("'Weights and Biases' enabled")
+        import wandb
+
+        #Initialize WANDB
+        wandb.init(
+            project="REPAI_XAIE_WORKSHOP",
+            config=cfg,
+            tags=cfg["wandb"]["tags"]
+        )
+        
+        #add Keras Metrics Logger
+        callbacks_list.append(
+            wandb.keras.WandbMetricsLogger(
+                log_freq=cfg["wandb"]["log_freq"],
+                )
+        )
     return callbacks_list
