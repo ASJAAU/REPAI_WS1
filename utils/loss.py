@@ -8,6 +8,8 @@ import tensorflow.compat.v2 as tf
 
 from tensorflow.keras import backend
 from tensorflow.keras.losses import Loss
+from keras.utils import tf_utils
+from keras.saving.experimental import saving_lib
 
 class LossFunctionWrapper(Loss):
     """Wraps a loss function in the `Loss` class."""

@@ -33,8 +33,8 @@ if __name__ == "__main__":
                 base.update(cfg)
                 cfg = base
         else:
-            print(f"### NO CONFIG BASE DETECTED ({cfg['base']}) ####")
-            print("Loading config as is")
+            print(f"NO CONFIG BASE DETECTED: Loading '{args.config}' as is")
+
                 
     #This is only needed when limiting TF to one GPU
     print("\n########## 'Available Hardware ##########")
@@ -75,12 +75,14 @@ if __name__ == "__main__":
     inputsize = cfg["data"]["im_size"]
 
     #Create dataloader (AS GENERATOR)
-    print("\nCreating training dataloader:")
+    print("Creating training dataloader:")
     train_dataloader = train_dataset.get_dataloader(
         batchsize=cfg["training"]["batch_size"], 
         shuffle_data=True)
 
-    print("\nCreating validation dataloader:")
+    print("")
+
+    print("Creating validation dataloader:")
     valid_dataloader = valid_dataset.get_dataloader(
         batchsize=cfg["training"]["batch_size"], 
         shuffle_data=True)
@@ -157,10 +159,10 @@ if __name__ == "__main__":
         print(f"Saving weights and logs at {args.output}/{cfg['model']['name']}/{cfg['model']['exp']}")
         network_callbacks = callbacks(
             save_path=local_save_path,
-            depth=cfg["model"]["size"],
             cfg=cfg,
-            metric=f"val_{metrics[0]}",
+            metric=f"val_{metrics[0].name}",
         )
+
         print(f"Saving copy of config at: {local_save_path}/config.yaml")
         with open(f'{local_save_path}/config.yaml', 'w') as f:
             yaml.dump(cfg, f)
@@ -174,7 +176,7 @@ if __name__ == "__main__":
             optimizer=optimizer,
             metrics=metrics,
         )
-        
+
         # Test forward pass
         dummy_input = np.random.rand(cfg["training"]["batch_size"],inputsize[0],inputsize[1],inputsize[2])
         print(f"Dummy input tensor of {dummy_input.shape}")

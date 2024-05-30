@@ -62,24 +62,25 @@ class HarborfrontClassificationDataset():
 
         if verbose:
             print(f'Successfully loaded "{data_split}" as {self.__repr__()}')
+            print("")
 
     def load_and_preprocess_image(self, path):
         #print(f"path: {path}")
         #Load Image
-        image = tf.io.read_file(path)
-        image = tf.io.decode_jpeg(image, channels=self.img_shape[-1])
-        #print(f"image: {image}")
-        
-        # Basic preprocessing steps
-        for pre in self.preprocesses:
-            image = pre(image)
-        
-        # Extra augmentations
-        if self.augmentations is not None:
-            for aug in self.augmentations:
-                image = aug(image)
-
-        return image
+        with tf.device('/CPU:0'):
+            image = tf.io.read_file(path)
+            image = tf.io.decode_jpeg(image, channels=self.img_shape[-1])
+            
+            # Basic preprocessing steps
+            for pre in self.preprocesses:
+                image = pre(image)
+            
+            # Extra augmentations
+            if self.augmentations is not None:
+                for aug in self.augmentations:
+                    image = aug(image)
+            print(f"image: {image}")
+            return image
 
     def load_and_preprocess_from_path_label(self, path, label):
         print(f"label: {label}")

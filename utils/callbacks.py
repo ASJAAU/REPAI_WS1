@@ -11,16 +11,17 @@ def existsfolder(path):
 
 def callbacks(save_path: str, cfg: dict, metric: str) -> List:
     #Check pathing
+    print(metric)
     existsfolder(save_path)
-    existsfolder(f"{save_path}/" "weights/")
+    existsfolder(save_path+"/weights/")
 
     callbacks_list = []
 
     #Save models 
     callbacks_list.append(
         ModelCheckpoint(
-            filepath=f"{save_path}/" "weights/" + "epoch:{epoch:02d}-"+f"{metric:.2f}.hdf5",
-            save_best_only=True,
+            filepath=save_path+"/weights/" + "epoch{epoch:02d}-loss{val_loss}.hdf5",
+            save_best_only=False,
             save_weights_only=False,
             verbose=1
             )
@@ -41,7 +42,7 @@ def callbacks(save_path: str, cfg: dict, metric: str) -> List:
 
     #Weights and Biases
     if cfg["wandb"]["enabled"]:
-        print("'Weights and Biases' enabled")
+        print("\nWeights and Biases (WandB) enabled")
         import wandb
 
         #Initialize WANDB
