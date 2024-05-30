@@ -18,8 +18,7 @@ if __name__ == "__main__":
     parser.add_argument("config", type=str, help="Path to config file (YAML)")
     #Optional
     parser.add_argument("--device", default="/GPU:1", help="Tensorflow device to prioritize", choices=["/CPU:0","/GPU:0", "/GPU:1"])
-    parser.add_argument("--wandb", action='store_true', help="Enable Weights and Biases")
-    parser.add_argument("--output", default="./models/", help="Where to save the model weights")
+    parser.add_argument("--output", default="./assets/", help="Where to save the model weights")
     args = parser.parse_args()        
 
     print("\n########## CLASSIFY-EXPLAIN-REMOVE ##########")
@@ -36,25 +35,7 @@ if __name__ == "__main__":
         else:
             print(f"### NO CONFIG BASE DETECTED ({cfg['base']}) ####")
             print("Loading config as is")
-            
-    #Setup experiment callbacks
-    network_callbacks = callbacks(
-        save_path=f'assets/{cfg["model"]["name"]}/{cfg["model"]["exp"]}',
-        depth=cfg["model"]["size"],
-        cfg=cfg
-    )
-
-    #Initialize WANDB
-    if args.wandb:
-        print("\n########## 'Weights and Biases' enabled ##########")
-        import wandb
-        wandb.init(project="REPAI_XAIE_WORKSHOP",config=cfg)
-        wandb_callback = wandb.keras.WandbMetricsLogger(log_freq=cfg["wandb"]["log_freq"])
-        network_callbacks.append(wandb_callback)
-
-    #Now prevents
-    tf.config.run_functions_eagerly(False)
-    
+                
     #This is only needed when limiting TF to one GPU
     print("\n########## 'Available Hardware ##########")
     gpus = tf.config.list_physical_devices('GPU')
@@ -67,6 +48,9 @@ if __name__ == "__main__":
         except RuntimeError as e:
             # Visible devices must be set before GPUs have been initialized
             print(e)
+
+    #Prevent eager loading (causes memory issues in 2.11)
+    tf.config.run_functions_eagerly(False)
 
     print("\n########## LOADING DATA ##########")
     train_dataset = HarborfrontClassificationDataset(
@@ -110,7 +94,8 @@ if __name__ == "__main__":
             depth = cfg["model"]["size"],
             num_classes=len(cfg["model"]["classes"]),
             expose_features=cfg["model"]["expose_featuremap"],
-            name=cfg["model"]["name"]
+            name=cfg["model"]["name"],
+            final_activation=cfg["model"]["final_activation"]
         )
         #Define learning-rate schedule
         lr_schedule = tf.keras.optimizers.schedules.ExponentialDecay(
@@ -136,11 +121,15 @@ if __name__ == "__main__":
                 name="huber_loss",
             )
 
+        print("\n########## DEFINING EVALUATION METRICS ##########")
         #Compile proper accuracy metrics
         metrics = []
+        #Note the first metric in this list will be used to rank performance (on the validation set)
 
         #Setup binary classification metrics
         if cfg["data"]["binary_cls"] is True:
+            print(f'Binary Classification flag: {cfg["data"]["binary_cls"]}')
+            print("Applying Binary Classification Metrics")
             metrics.append(Binary_Accuracy(name="acc_total")) #Total accuracy of model (Mean of all classes)
             #Add classwise accuracy metrics
             for i, name in enumerate(cfg["model"]["classes"]):
@@ -149,27 +138,62 @@ if __name__ == "__main__":
         #Setup Object counting metrics
         else:
             #Track mean absolute error
+            print(f'Binary Classification flag: {cfg["data"]["binary_cls"]}')
+            print("Applying Linear Regression Metrics")
             metrics.append(Mean_Absolute_Error(name="MAE_total")) 
             for i, name in enumerate(cfg["model"]["classes"]):
                 metrics.append(Mean_Absolute_Error(name=f"MAE_{name}", element=i))
-            #Track root mean squared
+            
+            #Track root mean squared error
             metrics.append(Root_Mean_Squared_Error(name="RMSE_total")) 
             for i, name in enumerate(cfg["model"]["classes"]):
                 metrics.append(Root_Mean_Squared_Error(name=f"RMSE_{name}", element=i))
 
+        print("\n########## SETTING UP CALLBACKS AND LOGGING ##########")
+        #Setup experiment callbacks
+        print(f"Saving weights and logs at {args.output}/{cfg['model']['name']}/{cfg['model']['exp']}")
+        network_callbacks = callbacks(
+            save_path=f'{args.output}/{cfg["model"]["name"]}/{cfg["model"]["exp"]}',
+            depth=cfg["model"]["size"],
+            cfg=cfg,
+            metric=f"val_{metrics[0]}",
+        )
+        print(f"NOTE: ranking model performance with {metrics[0]} (validation set)")
+        print(f"the model with the best {metrics[0]} will be saved")
+
+        if cfg["wandb"]["enabled"]:
+            #Initialize WANDB
+            print("'Weights and Biases' enabled")
+            import wandb
+            wandb.init(
+                project="REPAI_XAIE_WORKSHOP",
+                config=cfg,
+                tags=cfg["wandb"]["tags"]
+                )
+            
+            #add Metrics logging callback
+            network_callbacks.append(wandb.keras.WandbMetricsLogger(log_freq=cfg["wandb"]["log_freq"],))
+
+        print("\n########## COMPILING NETWORK AND TESTING DUMMY DATA ##########")
         #Compile model
         network.compile(
             loss=loss,
             optimizer=optimizer,
             metrics=metrics,
         )
-        #dummy_pred = network(tf.convert_to_tensor(np.random.rand(cfg["training"]["batch_size"],inputsize[0],inputsize[1],inputsize[2])))
 
+        # Test forward pass
+        dummy_input = np.random.rand(cfg["training"]["batch_size"],inputsize[0],inputsize[1],inputsize[2])
+        print(f"Dummy input tensor of {dummy_input.shape}")
+        dummy_pred = network(tf.convert_to_tensor(dummy_input))
+        print("Network primed")
+        
+        print("\n########## TRAINING STARTING ##########")
         #Complete Training Function
         rep = network.fit(
             train_dataloader,
             epochs=cfg["training"]["epochs"],
-            steps_per_epoch=int(len(train_dataloader)/cfg["training"]["batch_size"]),
+            #steps_per_epoch=int(len(train_dataloader)/cfg["training"]["batch_size"]),
             callbacks=network_callbacks,
             validation_data=valid_dataloader,
             validation_steps=int(len(valid_dataloader)/cfg["training"]["batch_size"]),

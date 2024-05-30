@@ -15,8 +15,9 @@ model:
   - "motorcycle"
   - "vehicle"
   expose_featuremap: False
+  final_activation: "relu"
   name: "ResNet56_counter_default"
-  exp: "DEFAULT SETTINGS"
+  exp: "DEFAULT_SETTINGS"
 
 data:
   root: "/Data/Harborfront_raw/"
@@ -30,4 +31,8 @@ data:
   binary_cls: False
 
 wandb:
+  enabled: True
   log_freq: 100 #Number of batches
+  project_name: "REPAI_XAIE_WORKSHOP"
+  tags:
+    - counting

@@ -54,7 +54,8 @@ def build_resnet_model(input_shape: Tuple[int, int, int],
                        depth: int,
                        num_classes: int,
                        expose_features: bool,
-                       name="model"):
+                       name="model",
+                       final_activation="relu"):
     """
     ResNet Version 2 Model builder [b]
 
@@ -146,10 +147,10 @@ def build_resnet_model(input_shape: Tuple[int, int, int],
 
     if expose_features:
         #outputs = [Dense(1, activation='sigmoid', name=f'cls_{x}')(y) for x in range(num_classes)], X
-        outputs = Dense(num_classes, activation='sigmoid')(y), X
+        outputs = Dense(num_classes, activation=final_activation)(y), X
     else:
         #outputs = [Dense(1, activation='sigmoid', name=f'cls_{x}')(y) for x in range(num_classes)]
-        outputs = Dense(num_classes, activation='sigmoid')(y)
+        outputs = Dense(num_classes, activation=final_activation)(y)
 
     # Instantiate model.
     model = Model(inputs=inputs, outputs=outputs, name=name)
