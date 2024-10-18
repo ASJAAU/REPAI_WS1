@@ -6,6 +6,7 @@ from tensorflow.keras.models import Model
 from tensorflow.keras.regularizers import l2
 
 
+
 # Identity Block or Residual Block or simply Skip Connector
 def residual_block(X, num_filters: int, stride: int = 1, kernel_size: int = 3,
                    activation: str = 'relu', bn: bool = True, conv_first: bool = True):

@@ -216,7 +216,7 @@ if __name__ == '__main__':
   #from ..REPAI_WS1.models.resnet import * 
   
   import yaml
-  model = tf.keras.models.load_model("../REPAI_WS1/testmodel.hdf5")
+  model = tf.keras.models.load_model("./outputs/testmodel.hdf5")
 
   ## reading the image from  the folder
   read_path = "./data/test_images/image_0019.jpg" #join('Data', 'water-bird.JPEG')

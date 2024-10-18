@@ -2,7 +2,7 @@ import tensorflow as tf
 import argparse
 from data.dataloader import * 
 from utils.visualize import *
-from utils.metrics import Binary_Accuracy, binary_accuracy
+from utils.metrics import Binary_Accuracy, binary_accuracy, Mean_Absolute_Error, mae, Root_Mean_Squared_Error, rmse
 import numpy as np
 import yaml
 
@@ -13,10 +13,15 @@ args = parser.parse_args()
 
 #Load modelweights
 print("##### LOADING MODEL #####")
+
 #Specify custom objects the model was compiled with
 dependencies = {
     "Binary_Accuracy": Binary_Accuracy,
-    "binary_accuracy": binary_accuracy
+    "binary_accuracy": binary_accuracy,
+    "Mean_Absolute_Error": Mean_Absolute_Error,
+    "mae": mae,
+    "Root_Mean_Squared_Error": Root_Mean_Squared_Error,
+    "rmse": rmse,
 }
 
 #Load model
@@ -37,8 +42,15 @@ valid_dataset = HarborfrontClassificationDataset(
     binary_cls=cfg["data"]["binary_cls"],)
 
 #Retrieve dataloader/generator
-print("#### Evaluating ####")
-dataloader = valid_dataset.get_data_generator()
+dataloader = valid_dataset.get_generator(batchsize=8, return_idx=True)
 
-#Evaluate
-metrics = model.evaluate(dataloader)
+print("#### Evaluating ####")
+for imgs, labels, idx in dataloader:
+    preds = model(imgs).numpy()
+    targets = labels.numpy()
+    ids = idx.numpy()
+
+    
+    for i in range(len(preds)):
+
+    

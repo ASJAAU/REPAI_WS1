@@ -55,7 +55,7 @@ class HarborfrontClassificationDataset():
             self.dataset["target"] = self.dataset.apply(lambda x: np.asarray([1 if int(x[g]) > 0 else 0 for g in self.classes],dtype=np.int8), axis=1)
         # Object Counts
         else: 
-            self.dataset["target"] = self.dataset.apply(lambda x: np.asarray([float(x[g]) for g in self.classes],dtype=np.float32), axis=1)
+            self.dataset["target"] = self.dataset.apply(lambda x: np.asarray([float(x[g]) for g in self.classes],dtype=np.int8), axis=1)
 
         #Convert filenames to constants for later loading
         self.dataset["file_name"] = self.dataset.apply(lambda x: x["file_name"], axis=1)
@@ -67,23 +67,22 @@ class HarborfrontClassificationDataset():
     def load_and_preprocess_image(self, path):
         #print(f"path: {path}")
         #Load Image
-        with tf.device('/CPU:0'):
-            image = tf.io.read_file(path)
-            image = tf.io.decode_jpeg(image, channels=self.img_shape[-1])
-            
-            # Basic preprocessing steps
-            for pre in self.preprocesses:
-                image = pre(image)
-            
-            # Extra augmentations
-            if self.augmentations is not None:
-                for aug in self.augmentations:
-                    image = aug(image)
-            #print(f"image: {image}")
-            return image
-
+        #image = tf.keras.utils.load_img(path) 
+        image = tf.io.read_file(path)
+        image = tf.io.decode_jpeg(image, channels=self.img_shape[-1])
+        
+        # Basic preprocessing steps
+        for pre in self.preprocesses:
+            image = pre(image)
+        
+        # Extra augmentations
+        if self.augmentations is not None:
+            for aug in self.augmentations:
+                image = aug(image)
+        #print(f"image: {image}")
+        return image
+    
     def load_and_preprocess_from_path_label(self, path, label, idx=None):
-        #print(f"label: {label}")
         if idx is not None:
             return self.load_and_preprocess_image(path), label, idx
         else:
@@ -91,24 +90,24 @@ class HarborfrontClassificationDataset():
 
     def get_dataloader(self, batchsize=8, shuffle_data=True, return_idx=False):
         #Load from dataset
-        with tf.device('/CPU:0'): #Forcing CPU because otherwise it pushes everything to the GPU
+        with tf.device('/CPU'): #Forcing CPU because otherwise it pushes everything to the GPU
             if return_idx:
                 ds = tf.data.Dataset.from_tensor_slices((self.dataset["file_name"].to_list(), self.dataset["target"].to_list(), self.dataset.index.values.tolist()))
             else:
                 ds = tf.data.Dataset.from_tensor_slices((self.dataset["file_name"].to_list(), self.dataset["target"].to_list()))
 
+            #Cache
+            ds = ds.cache()
+
             #shuffle
             if shuffle_data:
-                ds = ds.shuffle(len(ds))
+                ds = ds.shuffle(buffer_size=1000)
 
-            #Preprocess data
+            # Apply preprocessing function
             ds = ds.map(self.load_and_preprocess_from_path_label)
-            
-            #Set batchsize
-            ds = ds.batch(batchsize)
 
-            #Set prefetching state
-            ds = ds.prefetch(2)
+            #Cache and batch data
+            ds = ds.batch(batchsize, drop_remainder=True, num_parallel_calls=tf.data.AUTOTUNE).prefetch(tf.data.AUTOTUNE)
             
         return ds
 
@@ -129,7 +128,7 @@ if __name__ == "__main__":
     print(dataset)
 
     input("Press Enter to continue...")
-    for i, batch in enumerate(dataset.get_dataloader(batchsize=4, return_idx=True)):
+    for i, batch in enumerate(dataset.get_dataloader(batchsize=10, return_idx=True)):
         print(len(batch))
         if len(batch) == 2:
             imgs, targets = batch

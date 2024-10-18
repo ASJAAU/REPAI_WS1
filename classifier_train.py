@@ -71,9 +71,6 @@ if __name__ == "__main__":
         verbose=True, #Print status and overview
         )
     
-    #Create target input size for rescaling
-    inputsize = cfg["data"]["im_size"]
-
     #Create dataloader (AS GENERATOR)
     print("Creating training dataloader:")
     train_dataloader = train_dataset.get_dataloader(
@@ -85,14 +82,18 @@ if __name__ == "__main__":
     print("Creating validation dataloader:")
     valid_dataloader = valid_dataset.get_dataloader(
         batchsize=cfg["training"]["batch_size"], 
-        shuffle_data=True)
+        shuffle_data=False)
+
+    #Create target input size for rescaling
+    inputsize = cfg["data"]["im_size"]
+    dummy_input = tf.convert_to_tensor(np.random.rand(cfg["training"]["batch_size"],inputsize[0],inputsize[1],inputsize[2]))
 
     #Define Model
     with tf.device(args.device):
         print("\n########## BUILDING MODEL ##########")
         print(f'Building model: ResNet{cfg["model"]["size"]}')
         network = build_resnet_model(
-            input_shape=tuple(cfg["data"]["im_size"]),
+            input_shape = dummy_input.shape[1:],#tuple(cfg["data"]["im_size"]),
             depth = cfg["model"]["size"],
             num_classes=len(cfg["model"]["classes"]),
             expose_features=cfg["model"]["expose_featuremap"],
@@ -178,7 +179,6 @@ if __name__ == "__main__":
         )
 
         # Test forward pass
-        dummy_input = np.random.rand(cfg["training"]["batch_size"],inputsize[0],inputsize[1],inputsize[2])
         print(f"Dummy input tensor of {dummy_input.shape}")
         dummy_pred = network(tf.convert_to_tensor(dummy_input))
         print("Network primed and ready to train")
@@ -188,8 +188,8 @@ if __name__ == "__main__":
         rep = network.fit(
             train_dataloader,
             epochs=cfg["training"]["epochs"],
-            steps_per_epoch=int(len(train_dataloader)/cfg["training"]["batch_size"]),
+            #steps_per_epoch=int(len(train_dataloader)/cfg["training"]["batch_size"]),
             callbacks=network_callbacks,
             validation_data=valid_dataloader,
-            validation_steps=int(len(valid_dataloader)/cfg["training"]["batch_size"]),
+            #validation_steps=int(len(valid_dataloader)/cfg["training"]["batch_size"]),
         )
